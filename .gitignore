@@ -1,0 +1,25 @@
+# Go
+/monitor
+*.exe
+
+# Node
+node_modules/
+web/frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+/probes/disk-space/disk-space
+/probes/command/command
+/internal/web/frontend/dist/*
+!/internal/web/frontend/dist/.gitkeep

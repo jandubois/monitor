@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: monitor
+      POSTGRES_PASSWORD: monitor
+      POSTGRES_DB: monitor
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U monitor"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build: .
+    command: migrate
+    environment:
+      DATABASE_URL: postgres://monitor:monitor@postgres:5432/monitor?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  watcher:
+    build: .
+    command: watcher
+    environment:
+      DATABASE_URL: postgres://monitor:monitor@postgres:5432/monitor?sslmode=disable
+    volumes:
+      - ./probes:/app/probes:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build: .
+    command: web
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://monitor:monitor@postgres:5432/monitor?sslmode=disable
+      AUTH_TOKEN: ${AUTH_TOKEN:-changeme}
+      WATCHER_URL: http://watcher:8081
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  postgres_data:
