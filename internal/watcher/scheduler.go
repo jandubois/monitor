@@ -176,8 +176,8 @@ func (s *Scheduler) calculateNextRun(cfg *ProbeConfig) time.Duration {
 		return delay
 	}
 
-	// Otherwise use the interval (with small jitter for new configs)
-	return time.Duration(cfg.ID%10) * time.Second
+	// Use the configured interval
+	return cfg.Interval
 }
 
 func (s *Scheduler) configChanged(old, new *ProbeConfig) bool {
