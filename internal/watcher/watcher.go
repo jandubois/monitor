@@ -9,16 +9,15 @@ import (
 	"time"
 
 	"github.com/jankremlacek/monitor/internal/config"
-	"github.com/jankremlacek/monitor/internal/db"
-	"github.com/jankremlacek/monitor/internal/notify"
 )
+
+const Version = "1.0.0"
 
 // Watcher schedules and executes probes.
 type Watcher struct {
-	db         *db.DB
-	config     *config.WatcherConfig
-	dispatcher *notify.Dispatcher
-	discovery  *Discovery
+	config    *config.WatcherConfig
+	client    *Client
+	discovery *Discovery
 
 	scheduler *Scheduler
 	executor  *Executor
@@ -28,37 +27,43 @@ type Watcher struct {
 }
 
 // New creates a new Watcher instance.
-func New(database *db.DB, cfg *config.WatcherConfig) (*Watcher, error) {
-	dispatcher := notify.NewDispatcher(database.Pool())
+func New(cfg *config.WatcherConfig) (*Watcher, error) {
+	client := NewClient(cfg.PushURL, cfg.AuthToken)
 	executor := NewExecutor(cfg.MaxConcurrent, cfg.ProbesDir)
-	executor.SetResultWriter(NewDBResultWriter(database, dispatcher))
-	scheduler := NewScheduler(database, executor)
-	discovery := NewDiscovery(database, cfg.ProbesDir)
+	executor.SetResultWriter(NewHTTPResultWriter(client, cfg.Name))
+	scheduler := NewScheduler(client, executor, cfg.Name)
+	discovery := NewDiscovery(cfg.ProbesDir)
 
 	return &Watcher{
-		db:         database,
-		config:     cfg,
-		dispatcher: dispatcher,
-		discovery:  discovery,
-		scheduler:  scheduler,
-		executor:   executor,
+		config:    cfg,
+		client:    client,
+		discovery: discovery,
+		scheduler: scheduler,
+		executor:  executor,
 	}, nil
 }
 
 // Run starts the watcher service.
 func (w *Watcher) Run(ctx context.Context) error {
-	// Discover and register probes
-	count, err := w.discovery.DiscoverAll(ctx)
+	// Discover probes
+	probeTypes, err := w.discovery.DiscoverAll(ctx)
 	if err != nil {
 		slog.Warn("probe discovery failed", "error", err)
 	} else {
-		slog.Info("probe discovery complete", "registered", count)
+		slog.Info("probe discovery complete", "count", len(probeTypes))
 	}
 
-	// Load notification channels
-	if err := w.dispatcher.LoadChannels(ctx); err != nil {
-		slog.Warn("failed to load notification channels", "error", err)
+	// Register with web service
+	regReq := &RegisterRequest{
+		Name:       w.config.Name,
+		Version:    Version,
+		ProbeTypes: probeTypes,
 	}
+	resp, err := w.client.Register(ctx, regReq)
+	if err != nil {
+		return fmt.Errorf("failed to register with web service: %w", err)
+	}
+	slog.Info("registered with web service", "watcher_id", resp.WatcherID, "probe_types", resp.RegisteredProbes)
 
 	// Start heartbeat
 	go w.heartbeatLoop(ctx)
@@ -66,7 +71,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 	// Start scheduler
 	go w.scheduler.Run(ctx)
 
-	// Start API server
+	// Start API server (minimal, for debugging)
 	server := w.createAPIServer()
 	serverErr := make(chan error, 1)
 	go func() {
@@ -93,26 +98,25 @@ func (w *Watcher) heartbeatLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	// Initial heartbeat
-	w.updateHeartbeat(ctx)
+	w.sendHeartbeat(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.updateHeartbeat(ctx)
+			w.sendHeartbeat(ctx)
 		}
 	}
 }
 
-func (w *Watcher) updateHeartbeat(ctx context.Context) {
-	_, err := w.db.Pool().Exec(ctx, `
-		INSERT INTO watcher_heartbeat (id, last_seen_at, watcher_version)
-		VALUES (1, NOW(), $1)
-		ON CONFLICT (id) DO UPDATE SET last_seen_at = NOW(), watcher_version = $1
-	`, "1.0.0")
+func (w *Watcher) sendHeartbeat(ctx context.Context) {
+	err := w.client.Heartbeat(ctx, &HeartbeatRequest{
+		Name:    w.config.Name,
+		Version: Version,
+	})
 	if err != nil {
-		slog.Error("failed to update heartbeat", "error", err)
+		slog.Error("failed to send heartbeat", "error", err)
 	}
 }
 
@@ -133,24 +137,26 @@ func (w *Watcher) createAPIServer() *http.Server {
 		rw.Write([]byte(`{"status":"reloaded"}`))
 	})
 
-	mux.HandleFunc("POST /trigger/{config_id}", func(rw http.ResponseWriter, r *http.Request) {
-		configID := r.PathValue("config_id")
-		if err := w.scheduler.TriggerImmediate(r.Context(), configID); err != nil {
-			http.Error(rw, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		rw.WriteHeader(http.StatusOK)
-		rw.Write([]byte(`{"status":"triggered"}`))
-	})
-
 	mux.HandleFunc("POST /discover", func(rw http.ResponseWriter, r *http.Request) {
-		count, err := w.discovery.DiscoverAll(r.Context())
+		probeTypes, err := w.discovery.DiscoverAll(r.Context())
 		if err != nil {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		// Re-register with web service
+		regReq := &RegisterRequest{
+			Name:       w.config.Name,
+			Version:    Version,
+			ProbeTypes: probeTypes,
+		}
+		if _, err := w.client.Register(r.Context(), regReq); err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
 		rw.WriteHeader(http.StatusOK)
-		fmt.Fprintf(rw, `{"status":"discovered","count":%d}`, count)
+		fmt.Fprintf(rw, `{"status":"discovered","count":%d}`, len(probeTypes))
 	})
 
 	return &http.Server{

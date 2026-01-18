@@ -16,6 +16,7 @@ type Result struct {
 	Message string         `json:"message"`
 	Metrics map[string]any `json:"metrics,omitempty"`
 	Data    map[string]any `json:"data,omitempty"`
+	NextRun string         `json:"next_run,omitempty"` // ISO timestamp to override next scheduled run
 }
 
 // Description is the self-description format for probes.

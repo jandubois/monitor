@@ -34,6 +34,16 @@ export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
     return aOrder - bOrder;
   });
 
+  // Group configs by group_path
+  const groupedConfigs = sortedConfigs?.reduce((acc, config) => {
+    const group = config.group_path || 'Uncategorized';
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(config);
+    return acc;
+  }, {} as Record<string, ProbeConfig[]>);
+
+  const groups = groupedConfigs ? Object.keys(groupedConfigs).sort() : [];
+
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -48,9 +58,27 @@ export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
-          <div className="text-sm text-gray-500">Watcher Status</div>
-          <div className={`text-lg font-semibold ${status?.watcher_healthy ? 'text-green-600' : 'text-red-600'}`}>
-            {status?.watcher_healthy ? 'Healthy' : 'Unhealthy'}
+          <div className="text-sm text-gray-500">Watchers</div>
+          <div className="mt-1">
+            {status?.watchers?.length ? (
+              <div className="flex flex-wrap gap-2">
+                {status.watchers.map((w) => (
+                  <span
+                    key={w.name}
+                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                      w.healthy
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
+                    }`}
+                    title={w.version ? `v${w.version}` : undefined}
+                  >
+                    {w.name}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <span className="text-gray-400">No watchers</span>
+            )}
           </div>
         </div>
 
@@ -85,13 +113,20 @@ export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
           No probes configured yet.
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sortedConfigs?.map((config) => (
-            <ProbeCard
-              key={config.id}
-              config={config}
-              onClick={() => onProbeClick(config)}
-            />
+        <div className="space-y-6">
+          {groups.map((group) => (
+            <div key={group}>
+              <h2 className="text-lg font-semibold text-gray-700 mb-3">{group}</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {groupedConfigs![group].map((config) => (
+                  <ProbeCard
+                    key={config.id}
+                    config={config}
+                    onClick={() => onProbeClick(config)}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}

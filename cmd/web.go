@@ -17,8 +17,8 @@ import (
 var webCmd = &cobra.Command{
 	Use:   "web",
 	Short: "Run the web backend server",
-	Long: `The web server provides a REST API for the React SPA and serves
-the frontend static files.`,
+	Long: `The web server provides a REST API for the React SPA, serves
+the frontend static files, and accepts push requests from watchers.`,
 	RunE: runWeb,
 }
 
@@ -27,7 +27,6 @@ func init() {
 
 	webCmd.Flags().Int("port", 8080, "Port to listen on")
 	webCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env)")
-	webCmd.Flags().String("watcher-url", "http://localhost:8081", "Watcher API URL for trigger/reload")
 }
 
 func runWeb(cmd *cobra.Command, args []string) error {
@@ -46,18 +45,12 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	databaseURL := getDatabaseURL(cmd)
 	port, _ := cmd.Flags().GetInt("port")
 	authToken, _ := cmd.Flags().GetString("auth-token")
-	watcherURL, _ := cmd.Flags().GetString("watcher-url")
 
 	if authToken == "" {
 		authToken = os.Getenv("AUTH_TOKEN")
 	}
 	if authToken == "" {
 		return fmt.Errorf("auth token required (--auth-token or AUTH_TOKEN)")
-	}
-	if watcherURL == "http://localhost:8081" {
-		if url := os.Getenv("WATCHER_URL"); url != "" {
-			watcherURL = url
-		}
 	}
 
 	// Connect to database
@@ -68,9 +61,8 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	defer database.Close()
 
 	cfg := &config.WebConfig{
-		Port:       port,
-		AuthToken:  authToken,
-		WatcherURL: watcherURL,
+		Port:      port,
+		AuthToken: authToken,
 	}
 
 	server, err := web.NewServer(database, cfg)

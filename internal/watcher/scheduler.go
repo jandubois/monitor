@@ -6,28 +6,25 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/jankremlacek/monitor/internal/db"
 )
 
-// ProbeConfig represents a configured probe instance from the database.
+// ProbeConfig represents a configured probe instance.
 type ProbeConfig struct {
 	ID                   int
-	ProbeTypeID          int
 	Name                 string
-	Enabled              bool
+	ExecutablePath       string
 	Arguments            map[string]any
 	Interval             time.Duration
 	TimeoutSeconds       int
-	NotificationChannels []int
-	ExecutablePath       string
-	LastExecutedAt       *time.Time
+	NextRunAt            *time.Time
+	NotificationChannels []int // Kept for compatibility with ResultWriter interface
 }
 
 // Scheduler manages probe execution timing.
 type Scheduler struct {
-	db       *db.DB
-	executor *Executor
+	client      *Client
+	executor    *Executor
+	watcherName string
 
 	mu      sync.RWMutex
 	configs map[int]*ProbeConfig
@@ -35,12 +32,13 @@ type Scheduler struct {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(database *db.DB, executor *Executor) *Scheduler {
+func NewScheduler(client *Client, executor *Executor, watcherName string) *Scheduler {
 	return &Scheduler{
-		db:       database,
-		executor: executor,
-		configs:  make(map[int]*ProbeConfig),
-		timers:   make(map[int]*time.Timer),
+		client:      client,
+		executor:    executor,
+		watcherName: watcherName,
+		configs:     make(map[int]*ProbeConfig),
+		timers:      make(map[int]*time.Timer),
 	}
 }
 
@@ -51,65 +49,83 @@ func (s *Scheduler) Run(ctx context.Context) {
 		slog.Error("initial config load failed", "error", err)
 	}
 
-	// Check for missed runs on startup
-	s.checkMissedRuns(ctx)
+	// Periodic config refresh to pick up new configs or changes
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
 
-	<-ctx.Done()
-	s.stopAllTimers()
+	for {
+		select {
+		case <-ctx.Done():
+			s.stopAllTimers()
+			return
+		case <-ticker.C:
+			if err := s.Reload(ctx); err != nil {
+				slog.Error("config reload failed", "error", err)
+			}
+		}
+	}
 }
 
-// Reload reloads probe configurations from the database.
+// Reload reloads probe configurations from the web service.
 func (s *Scheduler) Reload(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	// Stop existing timers
-	for _, timer := range s.timers {
-		timer.Stop()
-	}
-	s.timers = make(map[int]*time.Timer)
-
-	// Load configs from database
-	rows, err := s.db.Pool().Query(ctx, `
-		SELECT
-			pc.id, pc.probe_type_id, pc.name, pc.enabled, pc.arguments,
-			pc.interval, pc.timeout_seconds, pc.notification_channels,
-			pt.executable_path,
-			(SELECT executed_at FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1)
-		FROM probe_configs pc
-		JOIN probe_types pt ON pt.id = pc.probe_type_id
-		WHERE pc.enabled = true
-	`)
+	// Fetch configs from web service
+	configs, err := s.client.GetConfigs(ctx, s.watcherName)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
 
-	s.configs = make(map[int]*ProbeConfig)
-	for rows.Next() {
-		var cfg ProbeConfig
-		var intervalStr string
-		err := rows.Scan(
-			&cfg.ID, &cfg.ProbeTypeID, &cfg.Name, &cfg.Enabled, &cfg.Arguments,
-			&intervalStr, &cfg.TimeoutSeconds, &cfg.NotificationChannels,
-			&cfg.ExecutablePath, &cfg.LastExecutedAt,
-		)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Track which configs we've seen
+	seen := make(map[int]bool)
+
+	for _, cfg := range configs {
+		seen[cfg.ID] = true
+
+		interval, err := parseInterval(cfg.Interval)
 		if err != nil {
-			slog.Error("scan probe config failed", "error", err)
+			slog.Error("parse interval failed", "config", cfg.Name, "interval", cfg.Interval, "error", err)
 			continue
 		}
 
-		cfg.Interval, err = parseInterval(intervalStr)
-		if err != nil {
-			slog.Error("parse interval failed", "config", cfg.Name, "interval", intervalStr, "error", err)
+		probeConfig := &ProbeConfig{
+			ID:             cfg.ID,
+			Name:           cfg.Name,
+			ExecutablePath: cfg.ExecutablePath,
+			Arguments:      cfg.Arguments,
+			Interval:       interval,
+			TimeoutSeconds: cfg.TimeoutSeconds,
+			NextRunAt:      cfg.NextRunAt,
+		}
+
+		// Check if config changed or is new
+		existing, exists := s.configs[cfg.ID]
+		if exists && !s.configChanged(existing, probeConfig) {
 			continue
 		}
 
-		s.configs[cfg.ID] = &cfg
-		s.scheduleProbe(ctx, &cfg)
+		// Stop existing timer if any
+		if timer, ok := s.timers[cfg.ID]; ok {
+			timer.Stop()
+			delete(s.timers, cfg.ID)
+		}
+
+		s.configs[cfg.ID] = probeConfig
+		s.scheduleProbe(ctx, probeConfig)
 	}
 
-	slog.Info("loaded probe configs", "count", len(s.configs))
+	// Remove configs that are no longer assigned to us
+	for id, timer := range s.timers {
+		if !seen[id] {
+			timer.Stop()
+			delete(s.timers, id)
+			delete(s.configs, id)
+			slog.Debug("removed config", "id", id)
+		}
+	}
+
+	slog.Debug("loaded probe configs", "count", len(configs))
 	return nil
 }
 
@@ -125,8 +141,7 @@ func (s *Scheduler) TriggerImmediate(ctx context.Context, configIDStr string) er
 	s.mu.RUnlock()
 
 	if !ok {
-		// Load from database if not in cache
-		return s.runProbeByID(ctx, configID)
+		return nil // Config not assigned to this watcher
 	}
 
 	return s.executor.Execute(ctx, cfg)
@@ -140,8 +155,9 @@ func (s *Scheduler) scheduleProbe(ctx context.Context, cfg *ProbeConfig) {
 		if err := s.executor.Execute(ctx, cfg); err != nil {
 			slog.Error("probe execution failed", "name", cfg.Name, "error", err)
 		}
-		// Reschedule
+		// Reschedule with interval (next_run_at will be updated via web service)
 		s.mu.Lock()
+		cfg.NextRunAt = nil // Clear next_run_at, will be recalculated based on interval
 		s.scheduleProbe(ctx, cfg)
 		s.mu.Unlock()
 	})
@@ -150,48 +166,37 @@ func (s *Scheduler) scheduleProbe(ctx context.Context, cfg *ProbeConfig) {
 }
 
 func (s *Scheduler) calculateNextRun(cfg *ProbeConfig) time.Duration {
-	if cfg.LastExecutedAt == nil {
-		// Never run, execute soon (with small jitter to avoid thundering herd)
-		return time.Duration(cfg.ID%10) * time.Second
+	// If next_run_at is set (either from web service or probe result), use it
+	if cfg.NextRunAt != nil {
+		delay := time.Until(*cfg.NextRunAt)
+		if delay < 0 {
+			// Overdue, run immediately
+			return 0
+		}
+		return delay
 	}
 
-	nextRun := cfg.LastExecutedAt.Add(cfg.Interval)
-	delay := time.Until(nextRun)
-	if delay < 0 {
-		// Overdue, run immediately
-		return 0
-	}
-	return delay
+	// Otherwise use the interval (with small jitter for new configs)
+	return time.Duration(cfg.ID%10) * time.Second
 }
 
-func (s *Scheduler) checkMissedRuns(ctx context.Context) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	for _, cfg := range s.configs {
-		if cfg.LastExecutedAt == nil {
-			continue
-		}
-
-		// Check if we missed any runs
-		expectedRuns := time.Since(*cfg.LastExecutedAt) / cfg.Interval
-		if expectedRuns > 1 {
-			slog.Warn("detected missed runs",
-				"probe", cfg.Name,
-				"last_run", cfg.LastExecutedAt,
-				"missed_count", int(expectedRuns)-1,
-			)
-
-			// Record missed run
-			_, err := s.db.Pool().Exec(ctx, `
-				INSERT INTO missed_runs (probe_config_id, scheduled_at, reason)
-				VALUES ($1, $2, $3)
-			`, cfg.ID, cfg.LastExecutedAt.Add(cfg.Interval), "watcher_down")
-			if err != nil {
-				slog.Error("failed to record missed run", "error", err)
-			}
+func (s *Scheduler) configChanged(old, new *ProbeConfig) bool {
+	if old.ExecutablePath != new.ExecutablePath {
+		return true
+	}
+	if old.Interval != new.Interval {
+		return true
+	}
+	if old.TimeoutSeconds != new.TimeoutSeconds {
+		return true
+	}
+	// Check if next_run_at changed and is in the past (immediate run requested)
+	if new.NextRunAt != nil && (old.NextRunAt == nil || !new.NextRunAt.Equal(*old.NextRunAt)) {
+		if time.Until(*new.NextRunAt) <= 0 {
+			return true
 		}
 	}
+	return false
 }
 
 func (s *Scheduler) stopAllTimers() {
@@ -200,30 +205,6 @@ func (s *Scheduler) stopAllTimers() {
 	for _, timer := range s.timers {
 		timer.Stop()
 	}
-}
-
-func (s *Scheduler) runProbeByID(ctx context.Context, configID int) error {
-	var cfg ProbeConfig
-	var intervalStr string
-	err := s.db.Pool().QueryRow(ctx, `
-		SELECT
-			pc.id, pc.probe_type_id, pc.name, pc.enabled, pc.arguments,
-			pc.interval, pc.timeout_seconds, pc.notification_channels,
-			pt.executable_path
-		FROM probe_configs pc
-		JOIN probe_types pt ON pt.id = pc.probe_type_id
-		WHERE pc.id = $1
-	`, configID).Scan(
-		&cfg.ID, &cfg.ProbeTypeID, &cfg.Name, &cfg.Enabled, &cfg.Arguments,
-		&intervalStr, &cfg.TimeoutSeconds, &cfg.NotificationChannels,
-		&cfg.ExecutablePath,
-	)
-	if err != nil {
-		return err
-	}
-
-	cfg.Interval, _ = parseInterval(intervalStr)
-	return s.executor.Execute(ctx, &cfg)
 }
 
 // parseInterval parses interval strings like "5m", "1h", "1d".

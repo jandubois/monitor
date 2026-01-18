@@ -5,6 +5,9 @@ import type {
   NotificationChannel,
   SystemStatus,
   ResultStats,
+  Watcher,
+  WatcherDetail,
+  ProbeConfigFilters,
 } from './types';
 
 class ApiClient {
@@ -65,30 +68,68 @@ class ApiClient {
     return this.request('/results/stats');
   }
 
-  async getProbeTypes(): Promise<ProbeType[]> {
-    return this.request('/probe-types');
+  // Watchers
+  async getWatchers(): Promise<Watcher[]> {
+    return this.request('/watchers');
   }
 
-  async discoverProbeTypes(): Promise<{ status: string; count: number }> {
+  async getWatcher(id: number): Promise<WatcherDetail> {
+    return this.request(`/watchers/${id}`);
+  }
+
+  // Probe Types
+  async getProbeTypes(watcherId?: number): Promise<ProbeType[]> {
+    const query = watcherId ? `?watcher=${watcherId}` : '';
+    return this.request(`/probe-types${query}`);
+  }
+
+  async discoverProbeTypes(): Promise<{ message: string; probe_types: number }> {
     return this.request('/probe-types/discover', { method: 'POST' });
   }
 
-  async getProbeConfigs(): Promise<ProbeConfig[]> {
-    return this.request('/probe-configs');
+  // Probe Configs
+  async getProbeConfigs(filters?: ProbeConfigFilters): Promise<ProbeConfig[]> {
+    const params = new URLSearchParams();
+    if (filters?.watcher) params.set('watcher', String(filters.watcher));
+    if (filters?.group) params.set('group', filters.group);
+    if (filters?.keywords) params.set('keywords', filters.keywords);
+    const query = params.toString();
+    return this.request(`/probe-configs${query ? `?${query}` : ''}`);
   }
 
   async getProbeConfig(id: number): Promise<ProbeConfig> {
     return this.request(`/probe-configs/${id}`);
   }
 
-  async createProbeConfig(config: Omit<ProbeConfig, 'id' | 'probe_type_name' | 'created_at' | 'updated_at'>): Promise<{ id: number }> {
+  async createProbeConfig(config: {
+    probe_type_id: number;
+    watcher_id?: number;
+    name: string;
+    enabled: boolean;
+    arguments: Record<string, unknown>;
+    interval: string;
+    timeout_seconds: number;
+    notification_channels: number[];
+    group_path?: string;
+    keywords?: string[];
+  }): Promise<{ id: number }> {
     return this.request('/probe-configs', {
       method: 'POST',
       body: JSON.stringify(config),
     });
   }
 
-  async updateProbeConfig(id: number, config: Partial<ProbeConfig>): Promise<void> {
+  async updateProbeConfig(id: number, config: {
+    watcher_id?: number;
+    name: string;
+    enabled: boolean;
+    arguments: Record<string, unknown>;
+    interval: string;
+    timeout_seconds: number;
+    notification_channels: number[];
+    group_path?: string;
+    keywords?: string[];
+  }): Promise<void> {
     return this.request(`/probe-configs/${id}`, {
       method: 'PUT',
       body: JSON.stringify(config),
@@ -107,6 +148,7 @@ class ApiClient {
     });
   }
 
+  // Results
   async getResults(params?: { config_id?: number; status?: string; since?: string; limit?: number }): Promise<ProbeResult[]> {
     const searchParams = new URLSearchParams();
     if (params?.config_id) searchParams.set('config_id', String(params.config_id));
@@ -121,6 +163,7 @@ class ApiClient {
     return this.request(`/results/${configId}`);
   }
 
+  // Notification Channels
   async getNotificationChannels(): Promise<NotificationChannel[]> {
     return this.request('/notification-channels');
   }

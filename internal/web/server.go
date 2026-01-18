@@ -9,22 +9,25 @@ import (
 
 	"github.com/jankremlacek/monitor/internal/config"
 	"github.com/jankremlacek/monitor/internal/db"
+	"github.com/jankremlacek/monitor/internal/notify"
 )
 
 // Server is the web backend.
 type Server struct {
-	db            *db.DB
-	config        *config.WebConfig
-	server        *http.Server
-	watcherClient *http.Client
+	db         *db.DB
+	config     *config.WebConfig
+	server     *http.Server
+	dispatcher *notify.Dispatcher
 }
 
 // NewServer creates a new web server.
 func NewServer(database *db.DB, cfg *config.WebConfig) (*Server, error) {
+	dispatcher := notify.NewDispatcher(database.Pool())
+
 	s := &Server{
-		db:            database,
-		config:        cfg,
-		watcherClient: &http.Client{Timeout: 30 * time.Second},
+		db:         database,
+		config:     cfg,
+		dispatcher: dispatcher,
 	}
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
@@ -33,18 +36,13 @@ func NewServer(database *db.DB, cfg *config.WebConfig) (*Server, error) {
 	return s, nil
 }
 
-// callWatcher makes a request to the watcher API.
-func (s *Server) callWatcher(ctx context.Context, method, path string) (*http.Response, error) {
-	url := s.config.WatcherURL + path
-	req, err := http.NewRequestWithContext(ctx, method, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	return s.watcherClient.Do(req)
-}
-
 // Run starts the web server.
 func (s *Server) Run(ctx context.Context) error {
+	// Load notification channels
+	if err := s.dispatcher.LoadChannels(ctx); err != nil {
+		slog.Error("failed to load notification channels", "error", err)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("web server listening", "addr", s.server.Addr)
@@ -69,6 +67,17 @@ func (s *Server) routes() http.Handler {
 
 	// Health check (no auth)
 	mux.HandleFunc("GET /api/health", s.handleHealth)
+
+	// Push API (used by watchers and external systems, with auth)
+	mux.Handle("POST /api/push/register", s.requireAuth(http.HandlerFunc(s.handlePushRegister)))
+	mux.Handle("POST /api/push/heartbeat", s.requireAuth(http.HandlerFunc(s.handlePushHeartbeat)))
+	mux.Handle("POST /api/push/result", s.requireAuth(http.HandlerFunc(s.handlePushResult)))
+	mux.Handle("POST /api/push/alert", s.requireAuth(http.HandlerFunc(s.handlePushAlert)))
+	mux.Handle("GET /api/push/configs/{watcher}", s.requireAuth(http.HandlerFunc(s.handlePushGetConfigs)))
+
+	// Watchers API
+	mux.Handle("GET /api/watchers", s.requireAuth(http.HandlerFunc(s.handleListWatchers)))
+	mux.Handle("GET /api/watchers/{id}", s.requireAuth(http.HandlerFunc(s.handleGetWatcher)))
 
 	// API routes (with auth)
 	mux.Handle("GET /api/status", s.requireAuth(http.HandlerFunc(s.handleStatus)))

@@ -11,32 +11,29 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/jankremlacek/monitor/internal/db"
 	"github.com/jankremlacek/monitor/internal/probe"
 )
 
-// Discovery scans for probes and registers them in the database.
+// Discovery scans for probes and describes them.
 type Discovery struct {
-	db        *db.DB
 	probesDir string
 }
 
 // NewDiscovery creates a new probe discovery instance.
-func NewDiscovery(database *db.DB, probesDir string) *Discovery {
+func NewDiscovery(probesDir string) *Discovery {
 	return &Discovery{
-		db:        database,
 		probesDir: probesDir,
 	}
 }
 
-// DiscoverAll scans the probes directory and registers all found probes.
-func (d *Discovery) DiscoverAll(ctx context.Context) (int, error) {
+// DiscoverAll scans the probes directory and returns descriptions of all found probes.
+func (d *Discovery) DiscoverAll(ctx context.Context) ([]RegisterProbeType, error) {
 	entries, err := os.ReadDir(d.probesDir)
 	if err != nil {
-		return 0, fmt.Errorf("read probes directory: %w", err)
+		return nil, fmt.Errorf("read probes directory: %w", err)
 	}
 
-	registered := 0
+	var probeTypes []RegisterProbeType
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -57,16 +54,58 @@ func (d *Discovery) DiscoverAll(ctx context.Context) (int, error) {
 			continue
 		}
 
-		if err := d.registerProbe(ctx, desc, probePath); err != nil {
-			slog.Error("failed to register probe", "name", desc.Name, "error", err)
-			continue
+		// Convert absolute path if relative
+		absPath, err := filepath.Abs(probePath)
+		if err != nil {
+			absPath = probePath
 		}
 
-		slog.Info("registered probe", "name", desc.Name, "version", desc.Version)
-		registered++
+		// Convert Arguments to map[string]any
+		argsMap := make(map[string]any)
+		if desc.Arguments.Required != nil {
+			reqMap := make(map[string]any)
+			for k, v := range desc.Arguments.Required {
+				reqMap[k] = map[string]any{
+					"type":        v.Type,
+					"description": v.Description,
+				}
+				if v.Default != nil {
+					reqMap[k].(map[string]any)["default"] = v.Default
+				}
+			}
+			argsMap["required"] = reqMap
+		}
+		if desc.Arguments.Optional != nil {
+			optMap := make(map[string]any)
+			for k, v := range desc.Arguments.Optional {
+				optMap[k] = map[string]any{
+					"type":        v.Type,
+					"description": v.Description,
+				}
+				if v.Default != nil {
+					optMap[k].(map[string]any)["default"] = v.Default
+				}
+			}
+			argsMap["optional"] = optMap
+		}
+
+		version := desc.Version
+		if version == "" {
+			version = "0.0.0"
+		}
+
+		probeTypes = append(probeTypes, RegisterProbeType{
+			Name:           desc.Name,
+			Version:        version,
+			Description:    desc.Description,
+			Arguments:      argsMap,
+			ExecutablePath: absPath,
+		})
+
+		slog.Info("discovered probe", "name", desc.Name, "version", version)
 	}
 
-	return registered, nil
+	return probeTypes, nil
 }
 
 func (d *Discovery) describeProbe(ctx context.Context, path string) (*probe.Description, error) {
@@ -94,30 +133,4 @@ func (d *Discovery) describeProbe(ctx context.Context, path string) (*probe.Desc
 	}
 
 	return &desc, nil
-}
-
-func (d *Discovery) registerProbe(ctx context.Context, desc *probe.Description, execPath string) error {
-	// Convert absolute path if relative
-	absPath, err := filepath.Abs(execPath)
-	if err != nil {
-		absPath = execPath
-	}
-
-	argsJSON, err := json.Marshal(desc.Arguments)
-	if err != nil {
-		return fmt.Errorf("marshal arguments: %w", err)
-	}
-
-	_, err = d.db.Pool().Exec(ctx, `
-		INSERT INTO probe_types (name, description, version, arguments, executable_path, registered_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-		ON CONFLICT (name) DO UPDATE SET
-			description = EXCLUDED.description,
-			version = EXCLUDED.version,
-			arguments = EXCLUDED.arguments,
-			executable_path = EXCLUDED.executable_path,
-			updated_at = NOW()
-	`, desc.Name, desc.Description, desc.Version, argsJSON, absPath)
-
-	return err
 }
