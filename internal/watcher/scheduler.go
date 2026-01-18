@@ -130,11 +130,16 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 	return nil
 }
 
-// TriggerImmediate runs a probe immediately.
+// TriggerImmediate runs a probe immediately with fresh config.
 func (s *Scheduler) TriggerImmediate(ctx context.Context, configIDStr string) error {
 	configID, err := strconv.Atoi(configIDStr)
 	if err != nil {
 		return err
+	}
+
+	// Reload configs to get the latest changes before executing
+	if err := s.Reload(ctx); err != nil {
+		slog.Warn("failed to reload before trigger", "error", err)
 	}
 
 	s.mu.RLock()
