@@ -44,6 +44,7 @@ services:
     command: ["watcher", "--name", "default", "--push-url", "http://web:8080", "--callback-url", "http://watcher:8081"]
     environment:
       AUTH_TOKEN: ${AUTH_TOKEN:-changeme}
+      GH_TOKEN: ${GH_TOKEN:-}
     depends_on:
       web:
         condition: service_healthy
