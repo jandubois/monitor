@@ -615,6 +615,54 @@ func (s *Server) handleRunProbeConfig(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "scheduled"})
 }
 
+func (s *Server) handleSetProbeEnabled(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, _ := strconv.Atoi(r.PathValue("id"))
+
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Update enabled state
+	_, err := s.db.Pool().Exec(ctx, `
+		UPDATE probe_configs SET enabled = $1, updated_at = NOW() WHERE id = $2
+	`, req.Enabled, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// If enabling (resuming), trigger immediate run
+	if req.Enabled {
+		// Get watcher callback URL
+		var callbackURL *string
+		s.db.Pool().QueryRow(ctx, `
+			SELECT w.callback_url
+			FROM probe_configs pc
+			JOIN watchers w ON w.id = pc.watcher_id
+			WHERE pc.id = $1
+		`, id).Scan(&callbackURL)
+
+		if callbackURL != nil && *callbackURL != "" {
+			triggerURL := fmt.Sprintf("%s/trigger/%d", *callbackURL, id)
+			triggerReq, _ := http.NewRequestWithContext(ctx, "POST", triggerURL, nil)
+			if resp, err := http.DefaultClient.Do(triggerReq); err == nil {
+				resp.Body.Close()
+			}
+		} else {
+			// Fall back to poll-based trigger
+			s.db.Pool().Exec(ctx, `UPDATE probe_configs SET next_run_at = NOW() WHERE id = $1`, id)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"enabled": req.Enabled})
+}
+
 func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 

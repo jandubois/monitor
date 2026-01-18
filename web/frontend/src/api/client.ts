@@ -148,6 +148,13 @@ class ApiClient {
     });
   }
 
+  async setProbeEnabled(id: number, enabled: boolean): Promise<void> {
+    return this.request(`/probe-configs/${id}/enabled`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
   // Results
   async getResults(params?: {
     config_id?: number;

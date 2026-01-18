@@ -58,6 +58,14 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
     },
   });
 
+  const pauseToggleMutation = useMutation({
+    mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
+      api.setProbeEnabled(id, enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+    },
+  });
+
   const formatRelativeTime = (timestamp: string) => {
     const diff = Date.now() - new Date(timestamp).getTime();
     if (diff < 60000) return 'now';
@@ -190,6 +198,10 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
                     onStatusClick={() => onProbeClick(config)}
                     onEdit={() => setEditingConfig(config)}
                     onRerun={() => rerunMutation.mutate(config.id)}
+                    onPauseToggle={() => pauseToggleMutation.mutate({
+                      id: config.id,
+                      enabled: !config.enabled,
+                    })}
                   />
                 ))}
               </div>

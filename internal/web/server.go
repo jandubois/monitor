@@ -89,6 +89,7 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("PUT /api/probe-configs/{id}", s.requireAuth(http.HandlerFunc(s.handleUpdateProbeConfig)))
 	mux.Handle("DELETE /api/probe-configs/{id}", s.requireAuth(http.HandlerFunc(s.handleDeleteProbeConfig)))
 	mux.Handle("POST /api/probe-configs/{id}/run", s.requireAuth(http.HandlerFunc(s.handleRunProbeConfig)))
+	mux.Handle("PUT /api/probe-configs/{id}/enabled", s.requireAuth(http.HandlerFunc(s.handleSetProbeEnabled)))
 	mux.Handle("GET /api/results", s.requireAuth(http.HandlerFunc(s.handleQueryResults)))
 	mux.Handle("GET /api/results/{config_id}", s.requireAuth(http.HandlerFunc(s.handleGetResults)))
 	mux.Handle("GET /api/results/stats", s.requireAuth(http.HandlerFunc(s.handleResultStats)))
