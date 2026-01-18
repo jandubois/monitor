@@ -80,8 +80,10 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, 
           group_path: groupPath || undefined,
           keywords: keywordsList.length > 0 ? keywordsList : undefined,
         });
-        // Trigger immediate rerun after edit
-        await api.triggerProbe(editingConfig.id);
+        // Trigger immediate rerun after edit (only if enabled)
+        if (enabled) {
+          await api.triggerProbe(editingConfig.id);
+        }
       } else {
         const result = await api.createProbeConfig({
           probe_type_id: probeTypeId,
