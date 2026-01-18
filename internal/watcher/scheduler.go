@@ -3,6 +3,7 @@ package watcher
 import (
 	"context"
 	"log/slog"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
@@ -188,6 +189,9 @@ func (s *Scheduler) configChanged(old, new *ProbeConfig) bool {
 		return true
 	}
 	if old.TimeoutSeconds != new.TimeoutSeconds {
+		return true
+	}
+	if !reflect.DeepEqual(old.Arguments, new.Arguments) {
 		return true
 	}
 	// Check if next_run_at changed and is in the past (immediate run requested)
