@@ -50,8 +50,8 @@ func (s *Scheduler) Run(ctx context.Context) {
 		slog.Error("initial config load failed", "error", err)
 	}
 
-	// Periodic config refresh to pick up new configs or changes
-	ticker := time.NewTicker(30 * time.Second)
+	// Periodic config refresh to pick up new configs or trigger requests
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
