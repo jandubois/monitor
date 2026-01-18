@@ -2,6 +2,8 @@ package web
 
 import (
 	"encoding/json"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -564,16 +566,48 @@ func (s *Server) handleRunProbeConfig(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	id, _ := strconv.Atoi(r.PathValue("id"))
 
-	// Set next_run_at to now so watcher picks it up on next poll
-	result, err := s.db.Pool().Exec(ctx, `
-		UPDATE probe_configs SET next_run_at = NOW() WHERE id = $1 AND enabled = true
+	// Get watcher callback URL for this probe config
+	var callbackURL *string
+	err := s.db.Pool().QueryRow(ctx, `
+		SELECT w.callback_url
+		FROM probe_configs pc
+		JOIN watchers w ON w.id = pc.watcher_id
+		WHERE pc.id = $1 AND pc.enabled = true
+	`, id).Scan(&callbackURL)
+	if err != nil {
+		http.Error(w, "probe config not found or disabled", http.StatusNotFound)
+		return
+	}
+
+	// If watcher has callback URL, trigger directly
+	if callbackURL != nil && *callbackURL != "" {
+		triggerURL := fmt.Sprintf("%s/trigger/%d", *callbackURL, id)
+		req, err := http.NewRequestWithContext(ctx, "POST", triggerURL, nil)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			slog.Warn("failed to trigger watcher directly, falling back to poll", "error", err)
+		} else {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(map[string]string{"status": "triggered"})
+				return
+			}
+			slog.Warn("watcher trigger returned non-OK status", "status", resp.StatusCode)
+		}
+	}
+
+	// Fall back to setting next_run_at for poll-based trigger
+	_, err = s.db.Pool().Exec(ctx, `
+		UPDATE probe_configs SET next_run_at = NOW() WHERE id = $1
 	`, id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if result.RowsAffected() == 0 {
-		http.Error(w, "probe config not found or disabled", http.StatusNotFound)
 		return
 	}
 

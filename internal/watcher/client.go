@@ -32,9 +32,10 @@ func NewClient(baseURL, authToken string) *Client {
 
 // RegisterRequest is sent on watcher startup.
 type RegisterRequest struct {
-	Name       string              `json:"name"`
-	Version    string              `json:"version"`
-	ProbeTypes []RegisterProbeType `json:"probe_types"`
+	Name        string              `json:"name"`
+	Version     string              `json:"version"`
+	CallbackURL string              `json:"callback_url,omitempty"`
+	ProbeTypes  []RegisterProbeType `json:"probe_types"`
 }
 
 // RegisterProbeType describes a probe type available on this watcher.

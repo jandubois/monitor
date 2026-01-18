@@ -7,6 +7,7 @@ type WatcherConfig struct {
 	MaxConcurrent int
 	APIPort       int
 	PushURL       string // URL of web service push API
+	CallbackURL   string // URL where web service can reach this watcher (for triggers)
 	AuthToken     string // Bearer token for authentication
 }
 

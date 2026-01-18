@@ -55,9 +55,10 @@ func (w *Watcher) Run(ctx context.Context) error {
 
 	// Register with web service
 	regReq := &RegisterRequest{
-		Name:       w.config.Name,
-		Version:    Version,
-		ProbeTypes: probeTypes,
+		Name:        w.config.Name,
+		Version:     Version,
+		CallbackURL: w.config.CallbackURL,
+		ProbeTypes:  probeTypes,
 	}
 	resp, err := w.client.Register(ctx, regReq)
 	if err != nil {
@@ -135,6 +136,16 @@ func (w *Watcher) createAPIServer() *http.Server {
 		}
 		rw.WriteHeader(http.StatusOK)
 		rw.Write([]byte(`{"status":"reloaded"}`))
+	})
+
+	mux.HandleFunc("POST /trigger/{id}", func(rw http.ResponseWriter, r *http.Request) {
+		id := r.PathValue("id")
+		if err := w.scheduler.TriggerImmediate(r.Context(), id); err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		rw.Write([]byte(`{"status":"triggered"}`))
 	})
 
 	mux.HandleFunc("POST /discover", func(rw http.ResponseWriter, r *http.Request) {

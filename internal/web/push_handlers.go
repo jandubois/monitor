@@ -14,9 +14,10 @@ import (
 
 // RegisterRequest is sent by watchers on startup.
 type RegisterRequest struct {
-	Name       string              `json:"name"`
-	Version    string              `json:"version"`
-	ProbeTypes []RegisterProbeType `json:"probe_types"`
+	Name        string              `json:"name"`
+	Version     string              `json:"version"`
+	CallbackURL string              `json:"callback_url,omitempty"`
+	ProbeTypes  []RegisterProbeType `json:"probe_types"`
 }
 
 // RegisterProbeType describes a probe type available on a watcher.
@@ -86,13 +87,14 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 	// Upsert watcher
 	var watcherID int
 	err := s.db.Pool().QueryRow(ctx, `
-		INSERT INTO watchers (name, version, last_seen_at, registered_at)
-		VALUES ($1, $2, NOW(), NOW())
+		INSERT INTO watchers (name, version, callback_url, last_seen_at, registered_at)
+		VALUES ($1, $2, $3, NOW(), NOW())
 		ON CONFLICT (name) DO UPDATE SET
 			version = EXCLUDED.version,
+			callback_url = EXCLUDED.callback_url,
 			last_seen_at = NOW()
 		RETURNING id
-	`, req.Name, req.Version).Scan(&watcherID)
+	`, req.Name, req.Version, req.CallbackURL).Scan(&watcherID)
 	if err != nil {
 		slog.Error("failed to register watcher", "name", req.Name, "error", err)
 		http.Error(w, "failed to register watcher", http.StatusInternalServerError)

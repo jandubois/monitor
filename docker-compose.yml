@@ -41,7 +41,7 @@ services:
 
   watcher:
     build: .
-    command: ["watcher", "--name", "default", "--push-url", "http://web:8080"]
+    command: ["watcher", "--name", "default", "--push-url", "http://web:8080", "--callback-url", "http://watcher:8081"]
     environment:
       AUTH_TOKEN: ${AUTH_TOKEN:-changeme}
     depends_on:
