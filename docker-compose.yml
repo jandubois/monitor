@@ -27,8 +27,6 @@ services:
     command: watcher
     environment:
       DATABASE_URL: postgres://monitor:monitor@postgres:5432/monitor?sslmode=disable
-    volumes:
-      - ./probes:/app/probes:ro
     depends_on:
       migrate:
         condition: service_completed_successfully

@@ -4,6 +4,7 @@ import { api } from './api/client';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { ProbeDetail } from './pages/ProbeDetail';
+import { Config } from './pages/Config';
 import type { ProbeConfig } from './api/types';
 
 const queryClient = new QueryClient({
@@ -15,8 +16,11 @@ const queryClient = new QueryClient({
   },
 });
 
+type Page = 'dashboard' | 'config' | 'detail';
+
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
+  const [page, setPage] = useState<Page>('dashboard');
   const [selectedConfig, setSelectedConfig] = useState<ProbeConfig | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -44,16 +48,26 @@ function App() {
     return <Login onLogin={() => setAuthenticated(true)} />;
   }
 
+  const handleProbeClick = (config: ProbeConfig) => {
+    setSelectedConfig(config);
+    setPage('detail');
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen bg-gray-100">
-        {selectedConfig ? (
+        {page === 'detail' && selectedConfig ? (
           <ProbeDetail
             config={selectedConfig}
-            onBack={() => setSelectedConfig(null)}
+            onBack={() => setPage('dashboard')}
           />
+        ) : page === 'config' ? (
+          <Config onBack={() => setPage('dashboard')} />
         ) : (
-          <Dashboard onProbeClick={setSelectedConfig} />
+          <Dashboard
+            onProbeClick={handleProbeClick}
+            onConfigClick={() => setPage('config')}
+          />
         )}
       </div>
     </QueryClientProvider>

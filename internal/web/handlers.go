@@ -89,9 +89,19 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDiscoverProbeTypes(w http.ResponseWriter, r *http.Request) {
-	// This would call the watcher to discover probes in the probes directory
-	// For now, return not implemented
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	resp, err := s.callWatcher(r.Context(), http.MethodPost, "/discover")
+	if err != nil {
+		http.Error(w, "watcher unavailable: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
+		json.NewEncoder(w).Encode(result)
+	}
 }
 
 func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) {
@@ -293,9 +303,20 @@ func (s *Server) handleDeleteProbeConfig(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleRunProbeConfig(w http.ResponseWriter, r *http.Request) {
-	// This would call the watcher to trigger immediate execution
-	// For now, return not implemented
-	http.Error(w, "not implemented", http.StatusNotImplemented)
+	id := r.PathValue("id")
+	resp, err := s.callWatcher(r.Context(), http.MethodPost, "/trigger/"+id)
+	if err != nil {
+		http.Error(w, "watcher unavailable: "+err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	var result map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&result); err == nil {
+		json.NewEncoder(w).Encode(result)
+	}
 }
 
 func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {

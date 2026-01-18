@@ -18,6 +18,7 @@ type Watcher struct {
 	db         *db.DB
 	config     *config.WatcherConfig
 	dispatcher *notify.Dispatcher
+	discovery  *Discovery
 
 	scheduler *Scheduler
 	executor  *Executor
@@ -32,11 +33,13 @@ func New(database *db.DB, cfg *config.WatcherConfig) (*Watcher, error) {
 	executor := NewExecutor(cfg.MaxConcurrent, cfg.ProbesDir)
 	executor.SetResultWriter(NewDBResultWriter(database, dispatcher))
 	scheduler := NewScheduler(database, executor)
+	discovery := NewDiscovery(database, cfg.ProbesDir)
 
 	return &Watcher{
 		db:         database,
 		config:     cfg,
 		dispatcher: dispatcher,
+		discovery:  discovery,
 		scheduler:  scheduler,
 		executor:   executor,
 	}, nil
@@ -44,6 +47,14 @@ func New(database *db.DB, cfg *config.WatcherConfig) (*Watcher, error) {
 
 // Run starts the watcher service.
 func (w *Watcher) Run(ctx context.Context) error {
+	// Discover and register probes
+	count, err := w.discovery.DiscoverAll(ctx)
+	if err != nil {
+		slog.Warn("probe discovery failed", "error", err)
+	} else {
+		slog.Info("probe discovery complete", "registered", count)
+	}
+
 	// Load notification channels
 	if err := w.dispatcher.LoadChannels(ctx); err != nil {
 		slog.Warn("failed to load notification channels", "error", err)
@@ -130,6 +141,16 @@ func (w *Watcher) createAPIServer() *http.Server {
 		}
 		rw.WriteHeader(http.StatusOK)
 		rw.Write([]byte(`{"status":"triggered"}`))
+	})
+
+	mux.HandleFunc("POST /discover", func(rw http.ResponseWriter, r *http.Request) {
+		count, err := w.discovery.DiscoverAll(r.Context())
+		if err != nil {
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rw.WriteHeader(http.StatusOK)
+		fmt.Fprintf(rw, `{"status":"discovered","count":%d}`, count)
 	})
 
 	return &http.Server{

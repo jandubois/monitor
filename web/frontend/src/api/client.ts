@@ -69,6 +69,10 @@ class ApiClient {
     return this.request('/probe-types');
   }
 
+  async discoverProbeTypes(): Promise<{ status: string; count: number }> {
+    return this.request('/probe-types/discover', { method: 'POST' });
+  }
+
   async getProbeConfigs(): Promise<ProbeConfig[]> {
     return this.request('/probe-configs');
   }

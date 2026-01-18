@@ -13,22 +13,34 @@ import (
 
 // Server is the web backend.
 type Server struct {
-	db     *db.DB
-	config *config.WebConfig
-	server *http.Server
+	db            *db.DB
+	config        *config.WebConfig
+	server        *http.Server
+	watcherClient *http.Client
 }
 
 // NewServer creates a new web server.
 func NewServer(database *db.DB, cfg *config.WebConfig) (*Server, error) {
 	s := &Server{
-		db:     database,
-		config: cfg,
+		db:            database,
+		config:        cfg,
+		watcherClient: &http.Client{Timeout: 30 * time.Second},
 	}
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", cfg.Port),
 		Handler: s.routes(),
 	}
 	return s, nil
+}
+
+// callWatcher makes a request to the watcher API.
+func (s *Server) callWatcher(ctx context.Context, method, path string) (*http.Response, error) {
+	url := s.config.WatcherURL + path
+	req, err := http.NewRequestWithContext(ctx, method, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	return s.watcherClient.Do(req)
 }
 
 // Run starts the web server.

@@ -5,9 +5,10 @@ import type { ProbeConfig } from '../api/types';
 
 interface DashboardProps {
   onProbeClick: (config: ProbeConfig) => void;
+  onConfigClick: () => void;
 }
 
-export function Dashboard({ onProbeClick }: DashboardProps) {
+export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
   const { data: status } = useQuery({
     queryKey: ['status'],
     queryFn: () => api.getStatus(),
@@ -35,8 +36,14 @@ export function Dashboard({ onProbeClick }: DashboardProps) {
 
   return (
     <div className="p-6">
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Monitor Dashboard</h1>
+        <button
+          onClick={onConfigClick}
+          className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
+        >
+          Configure
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

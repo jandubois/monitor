@@ -54,6 +54,11 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	if authToken == "" {
 		return fmt.Errorf("auth token required (--auth-token or AUTH_TOKEN)")
 	}
+	if watcherURL == "http://localhost:8081" {
+		if url := os.Getenv("WATCHER_URL"); url != "" {
+			watcherURL = url
+		}
+	}
 
 	// Connect to database
 	database, err := db.Connect(ctx, databaseURL)

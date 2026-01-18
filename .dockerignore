@@ -1,0 +1,20 @@
+# Git
+.git
+.gitignore
+
+# Local binaries
+monitor
+probes/disk-space/disk-space
+probes/command/command
+
+# Frontend build artifacts (built in container)
+web/frontend/node_modules
+web/frontend/dist
+internal/web/frontend/dist
+
+# IDE
+.idea
+.vscode
+
+# OS
+.DS_Store
