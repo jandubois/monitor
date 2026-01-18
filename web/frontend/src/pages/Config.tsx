@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { ProbeType, ProbeConfig, Watcher } from '../api/types';
@@ -216,6 +216,16 @@ function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, onSaved
 
   const selectedType = probeTypes.find((pt) => pt.id === probeTypeId);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -281,57 +291,69 @@ function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, onSaved
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6">
           <h3 className="text-lg font-semibold mb-4">
             {editingConfig ? 'Edit Probe' : 'Add Probe'}
           </h3>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="My probe"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Watcher</label>
-              <select
-                value={watcherId}
-                onChange={(e) => setWatcherId(Number(e.target.value))}
-                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-              >
-                {watchers.map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {!editingConfig && (
+            {/* Two-column layout for main fields */}
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Probe Type</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="My probe"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Watcher</label>
                 <select
-                  value={probeTypeId}
-                  onChange={(e) => {
-                    setProbeTypeId(Number(e.target.value));
-                    setArgs({});
-                  }}
+                  value={watcherId}
+                  onChange={(e) => setWatcherId(Number(e.target.value))}
                   className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
                 >
-                  {probeTypes.map((pt) => (
-                    <option key={pt.id} value={pt.id}>{pt.name} (v{pt.version})</option>
+                  {watchers.map((w) => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
                   ))}
                 </select>
               </div>
-            )}
 
-            <div className="grid grid-cols-2 gap-4">
+              {!editingConfig && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Probe Type</label>
+                  <select
+                    value={probeTypeId}
+                    onChange={(e) => {
+                      setProbeTypeId(Number(e.target.value));
+                      setArgs({});
+                    }}
+                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                  >
+                    {probeTypes.map((pt) => (
+                      <option key={pt.id} value={pt.id}>{pt.name} (v{pt.version})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
+                <input
+                  type="text"
+                  value={groupPath}
+                  onChange={(e) => setGroupPath(e.target.value)}
+                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., Backups/Photos"
+                />
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Interval</label>
                 <select
@@ -348,6 +370,7 @@ function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, onSaved
                   <option value="1d">1 day</option>
                 </select>
               </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Timeout (s)</label>
                 <input
@@ -359,29 +382,17 @@ function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, onSaved
                   className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
-              <input
-                type="text"
-                value={groupPath}
-                onChange={(e) => setGroupPath(e.target.value)}
-                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., Backups, Backups/Photos"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Keywords</label>
-              <input
-                type="text"
-                value={keywords}
-                onChange={(e) => setKeywords(e.target.value)}
-                className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g., personal, critical, nas"
-              />
-              <p className="text-xs text-gray-500 mt-1">Comma-separated list of tags</p>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Keywords</label>
+                <input
+                  type="text"
+                  value={keywords}
+                  onChange={(e) => setKeywords(e.target.value)}
+                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., personal, critical, nas (comma-separated)"
+                />
+              </div>
             </div>
 
             <div className="flex items-center gap-2">
@@ -395,11 +406,11 @@ function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, onSaved
               <label htmlFor="enabled" className="text-sm text-gray-700">Enabled</label>
             </div>
 
-            {/* Arguments */}
+            {/* Arguments in two columns */}
             {selectedType?.arguments && (
               <div className="border-t pt-4">
                 <h4 className="text-sm font-medium text-gray-700 mb-3">Arguments</h4>
-                <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
                   {selectedType.arguments.required && Object.entries(selectedType.arguments.required).map(([key, spec]) => (
                     <div key={key}>
                       <label className="block text-sm text-gray-600 mb-1">
@@ -422,7 +433,7 @@ function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, onSaved
                         {key}
                         <span className="text-gray-400 ml-1">({spec.type})</span>
                         {spec.default !== undefined && (
-                          <span className="text-gray-400 ml-1">default: {String(spec.default)}</span>
+                          <span className="text-gray-400 ml-1">= {String(spec.default)}</span>
                         )}
                       </label>
                       <input
@@ -440,7 +451,7 @@ function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, onSaved
 
             {error && <p className="text-red-600 text-sm">{error}</p>}
 
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex justify-end gap-3 pt-4 border-t">
               <button
                 type="button"
                 onClick={onClose}
