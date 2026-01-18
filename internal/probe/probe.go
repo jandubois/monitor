@@ -35,7 +35,8 @@ type Arguments struct {
 
 // ArgumentSpec describes a single argument.
 type ArgumentSpec struct {
-	Type        string `json:"type"`
-	Description string `json:"description"`
-	Default     any    `json:"default,omitempty"`
+	Type        string   `json:"type"`
+	Description string   `json:"description"`
+	Default     any      `json:"default,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
 }

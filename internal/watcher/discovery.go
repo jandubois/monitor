@@ -65,26 +65,34 @@ func (d *Discovery) DiscoverAll(ctx context.Context) ([]RegisterProbeType, error
 		if desc.Arguments.Required != nil {
 			reqMap := make(map[string]any)
 			for k, v := range desc.Arguments.Required {
-				reqMap[k] = map[string]any{
+				spec := map[string]any{
 					"type":        v.Type,
 					"description": v.Description,
 				}
 				if v.Default != nil {
-					reqMap[k].(map[string]any)["default"] = v.Default
+					spec["default"] = v.Default
 				}
+				if len(v.Enum) > 0 {
+					spec["enum"] = v.Enum
+				}
+				reqMap[k] = spec
 			}
 			argsMap["required"] = reqMap
 		}
 		if desc.Arguments.Optional != nil {
 			optMap := make(map[string]any)
 			for k, v := range desc.Arguments.Optional {
-				optMap[k] = map[string]any{
+				spec := map[string]any{
 					"type":        v.Type,
 					"description": v.Description,
 				}
 				if v.Default != nil {
-					optMap[k].(map[string]any)["default"] = v.Default
+					spec["default"] = v.Default
 				}
+				if len(v.Enum) > 0 {
+					spec["enum"] = v.Enum
+				}
+				optMap[k] = spec
 			}
 			argsMap["optional"] = optMap
 		}
