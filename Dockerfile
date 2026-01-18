@@ -18,6 +18,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o monitor .
 # Build probes
 RUN CGO_ENABLED=0 GOOS=linux go build -o probes/disk-space/disk-space ./probes/disk-space
 RUN CGO_ENABLED=0 GOOS=linux go build -o probes/command/command ./probes/command
+RUN CGO_ENABLED=0 GOOS=linux go build -o probes/debug/debug ./probes/debug
 
 # Final image
 FROM alpine:3.21

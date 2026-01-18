@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { ProbeConfigForm } from '../components/ProbeConfigForm';
@@ -12,6 +12,16 @@ export function Config({ onBack }: ConfigProps) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !showForm) {
+        onBack();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onBack, showForm]);
 
   const { data: watchers } = useQuery({
     queryKey: ['watchers'],

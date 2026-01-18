@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { ProbeResult } from '../api/types';
@@ -12,6 +12,16 @@ const PAGE_SIZE = 20;
 
 export function Failures({ onBack, onProbeClick }: FailuresProps) {
   const [page, setPage] = useState(0);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onBack();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onBack]);
 
   const { data: failures, isLoading } = useQuery({
     queryKey: ['failures', page],

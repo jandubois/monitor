@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../api/client';
@@ -20,6 +20,16 @@ export function ProbeDetail({ config: initialConfig, onBack, onConfigUpdated }: 
   const [showEditForm, setShowEditForm] = useState(false);
   const [config, setConfig] = useState(initialConfig);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !showEditForm) {
+        onBack();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onBack, showEditForm]);
 
   const { data: results, isLoading } = useQuery({
     queryKey: ['probeResults', config.id],
