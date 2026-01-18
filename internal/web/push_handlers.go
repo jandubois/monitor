@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -188,12 +189,22 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse next_run if provided
+	// Parse next_run if provided by probe, otherwise calculate from interval
 	var nextRunAt *time.Time
 	if req.NextRun != "" {
 		t, err := time.Parse(time.RFC3339, req.NextRun)
 		if err == nil {
 			nextRunAt = &t
+		}
+	} else {
+		// Calculate next_run from interval
+		var intervalStr string
+		err := s.db.Pool().QueryRow(ctx, `SELECT interval FROM probe_configs WHERE id = $1`, req.ProbeConfigID).Scan(&intervalStr)
+		if err == nil {
+			if interval, err := parseInterval(intervalStr); err == nil && interval > 0 {
+				t := req.ExecutedAt.Add(interval)
+				nextRunAt = &t
+			}
 		}
 	}
 
@@ -208,7 +219,7 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update next_run_at on probe_config if probe specified it
+	// Update next_run_at on probe_config
 	if nextRunAt != nil {
 		_, err = s.db.Pool().Exec(ctx, `
 			UPDATE probe_configs SET next_run_at = $1 WHERE id = $2
@@ -379,4 +390,29 @@ func (s *Server) handlePushGetConfigs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(configs)
+}
+
+// parseInterval parses interval strings like "5m", "1h", "1d".
+func parseInterval(s string) (time.Duration, error) {
+	if len(s) < 2 {
+		return 0, nil
+	}
+
+	var value int
+	var unit byte
+	_, err := fmt.Sscanf(s, "%d%c", &value, &unit)
+	if err != nil {
+		return time.ParseDuration(s)
+	}
+
+	switch unit {
+	case 'm':
+		return time.Duration(value) * time.Minute, nil
+	case 'h':
+		return time.Duration(value) * time.Hour, nil
+	case 'd':
+		return time.Duration(value) * 24 * time.Hour, nil
+	default:
+		return time.ParseDuration(s)
+	}
 }

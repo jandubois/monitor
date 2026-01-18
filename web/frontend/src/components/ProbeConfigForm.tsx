@@ -80,8 +80,10 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, 
           group_path: groupPath || undefined,
           keywords: keywordsList.length > 0 ? keywordsList : undefined,
         });
+        // Trigger immediate rerun after edit
+        await api.triggerProbe(editingConfig.id);
       } else {
-        await api.createProbeConfig({
+        const result = await api.createProbeConfig({
           probe_type_id: probeTypeId,
           watcher_id: watcherId,
           name,
@@ -93,6 +95,8 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, 
           group_path: groupPath || undefined,
           keywords: keywordsList.length > 0 ? keywordsList : undefined,
         });
+        // Trigger immediate run for new probe
+        await api.triggerProbe(result.id);
       }
       onSaved();
     } catch (err) {
