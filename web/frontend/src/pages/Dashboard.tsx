@@ -1,6 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { ProbeCard } from '../components/ProbeCard';
+import { ProbeConfigForm } from '../components/ProbeConfigForm';
 import type { ProbeConfig } from '../api/types';
 
 interface DashboardProps {
@@ -9,6 +11,9 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
+  const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
+  const queryClient = useQueryClient();
+
   const { data: status } = useQuery({
     queryKey: ['status'],
     queryFn: () => api.getStatus(),
@@ -25,6 +30,25 @@ export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
     queryKey: ['probeConfigs'],
     queryFn: () => api.getProbeConfigs(),
     refetchInterval: 30000,
+  });
+
+  const { data: watchers } = useQuery({
+    queryKey: ['watchers'],
+    queryFn: () => api.getWatchers(),
+    enabled: !!editingConfig,
+  });
+
+  const { data: probeTypes } = useQuery({
+    queryKey: ['probeTypes'],
+    queryFn: () => api.getProbeTypes(),
+    enabled: !!editingConfig,
+  });
+
+  const rerunMutation = useMutation({
+    mutationFn: (id: number) => api.triggerProbe(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+    },
   });
 
   const sortedConfigs = configs?.sort((a, b) => {
@@ -122,13 +146,28 @@ export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
                   <ProbeCard
                     key={config.id}
                     config={config}
-                    onClick={() => onProbeClick(config)}
+                    onStatusClick={() => onProbeClick(config)}
+                    onEdit={() => setEditingConfig(config)}
+                    onRerun={() => rerunMutation.mutate(config.id)}
                   />
                 ))}
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {editingConfig && watchers && probeTypes && (
+        <ProbeConfigForm
+          probeTypes={probeTypes}
+          watchers={watchers}
+          editingConfig={editingConfig}
+          onClose={() => setEditingConfig(null)}
+          onSaved={() => {
+            setEditingConfig(null);
+            queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+          }}
+        />
       )}
     </div>
   );
