@@ -622,6 +622,7 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	since := r.URL.Query().Get("since")
 	limit := r.URL.Query().Get("limit")
+	offset := r.URL.Query().Get("offset")
 
 	query := `
 		SELECT pr.id, pr.probe_config_id, pc.name as config_name, pr.status, pr.message,
@@ -639,8 +640,9 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 		argNum++
 	}
 	if status != "" {
-		query += " AND pr.status = $" + strconv.Itoa(argNum)
-		args = append(args, status)
+		// Support multiple statuses with comma separator
+		query += " AND pr.status = ANY($" + strconv.Itoa(argNum) + "::text[])"
+		args = append(args, "{"+status+"}")
 		argNum++
 	}
 	if since != "" {
@@ -654,8 +656,14 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 	if limit != "" {
 		query += " LIMIT $" + strconv.Itoa(argNum)
 		args = append(args, limit)
+		argNum++
 	} else {
 		query += " LIMIT 100"
+	}
+
+	if offset != "" {
+		query += " OFFSET $" + strconv.Itoa(argNum)
+		args = append(args, offset)
 	}
 
 	rows, err := s.db.Pool().Query(ctx, query, args...)

@@ -149,12 +149,22 @@ class ApiClient {
   }
 
   // Results
-  async getResults(params?: { config_id?: number; status?: string; since?: string; limit?: number }): Promise<ProbeResult[]> {
+  async getResults(params?: {
+    config_id?: number;
+    status?: string | string[];
+    since?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<ProbeResult[]> {
     const searchParams = new URLSearchParams();
     if (params?.config_id) searchParams.set('config_id', String(params.config_id));
-    if (params?.status) searchParams.set('status', params.status);
+    if (params?.status) {
+      const statuses = Array.isArray(params.status) ? params.status.join(',') : params.status;
+      searchParams.set('status', statuses);
+    }
     if (params?.since) searchParams.set('since', params.since);
     if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.offset) searchParams.set('offset', String(params.offset));
     const query = searchParams.toString();
     return this.request(`/results${query ? `?${query}` : ''}`);
   }

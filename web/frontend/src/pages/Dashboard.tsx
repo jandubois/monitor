@@ -3,14 +3,15 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { ProbeCard } from '../components/ProbeCard';
 import { ProbeConfigForm } from '../components/ProbeConfigForm';
-import type { ProbeConfig } from '../api/types';
+import type { ProbeConfig, ProbeResult } from '../api/types';
 
 interface DashboardProps {
   onProbeClick: (config: ProbeConfig) => void;
   onConfigClick: () => void;
+  onFailuresClick: () => void;
 }
 
-export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
+export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: DashboardProps) {
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
   const queryClient = useQueryClient();
 
@@ -32,6 +33,12 @@ export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
     refetchInterval: 30000,
   });
 
+  const { data: recentFailures } = useQuery({
+    queryKey: ['recentFailures'],
+    queryFn: () => api.getResults({ status: ['critical', 'unknown', 'warning'], limit: 10 }),
+    refetchInterval: 10000,
+  });
+
   const { data: watchers } = useQuery({
     queryKey: ['watchers'],
     queryFn: () => api.getWatchers(),
@@ -50,6 +57,14 @@ export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
       queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
     },
   });
+
+  const formatRelativeTime = (timestamp: string) => {
+    const diff = Date.now() - new Date(timestamp).getTime();
+    if (diff < 60000) return 'now';
+    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
+    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
+    return `${Math.floor(diff / 86400000)}d`;
+  };
 
   const sortedConfigs = configs?.sort((a, b) => {
     const statusOrder = { critical: 0, warning: 1, unknown: 2, ok: 3 };
@@ -122,11 +137,37 @@ export function Dashboard({ onProbeClick, onConfigClick }: DashboardProps) {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
-          <div className="text-sm text-gray-500">Recent Failures</div>
-          <div className={`text-lg font-semibold ${(status?.recent_failures ?? 0) > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-            {status?.recent_failures ?? 0}
+        <div
+          className="bg-white rounded-lg shadow p-4 border border-gray-200 cursor-pointer hover:bg-gray-50"
+          onClick={onFailuresClick}
+        >
+          <div className="text-sm text-gray-500 flex items-center justify-between">
+            <span>Recent Failures</span>
+            <span className="text-xs text-gray-400">View all →</span>
           </div>
+          {recentFailures && recentFailures.length > 0 ? (
+            <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+              {recentFailures.slice(0, 5).map((f: ProbeResult) => (
+                <div key={f.id} className="flex items-center gap-2 text-sm">
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                      f.status === 'critical' ? 'bg-red-500' :
+                      f.status === 'warning' ? 'bg-yellow-500' : 'bg-gray-500'
+                    }`}
+                  />
+                  <span className="font-medium text-gray-700 truncate">{f.config_name}</span>
+                  <span className="text-gray-400 text-xs flex-shrink-0">{formatRelativeTime(f.executed_at)}</span>
+                </div>
+              ))}
+              {recentFailures.length > 5 && (
+                <div className="text-xs text-gray-400 pl-4">
+                  +{recentFailures.length - 5} more
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-lg font-semibold text-green-600 mt-1">None</div>
+          )}
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { ProbeDetail } from './pages/ProbeDetail';
 import { Config } from './pages/Config';
+import { Failures } from './pages/Failures';
 import type { ProbeConfig } from './api/types';
 
 const queryClient = new QueryClient({
@@ -16,7 +17,7 @@ const queryClient = new QueryClient({
   },
 });
 
-type Page = 'dashboard' | 'config' | 'detail';
+type Page = 'dashboard' | 'config' | 'detail' | 'failures';
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -53,6 +54,12 @@ function App() {
     setPage('detail');
   };
 
+  const handleProbeIdClick = async (configId: number) => {
+    const config = await api.getProbeConfig(configId);
+    setSelectedConfig(config);
+    setPage('detail');
+  };
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="min-h-screen bg-gray-100">
@@ -63,10 +70,16 @@ function App() {
           />
         ) : page === 'config' ? (
           <Config onBack={() => setPage('dashboard')} />
+        ) : page === 'failures' ? (
+          <Failures
+            onBack={() => setPage('dashboard')}
+            onProbeClick={handleProbeIdClick}
+          />
         ) : (
           <Dashboard
             onProbeClick={handleProbeClick}
             onConfigClick={() => setPage('config')}
+            onFailuresClick={() => setPage('failures')}
           />
         )}
       </div>
