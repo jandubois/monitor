@@ -1,24 +1,52 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
+import { ProbeConfigForm } from '../components/ProbeConfigForm';
 import type { ProbeConfig, ProbeResult } from '../api/types';
 
 interface ProbeDetailProps {
   config: ProbeConfig;
   onBack: () => void;
+  onConfigUpdated?: (config: ProbeConfig) => void;
 }
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString();
 }
 
-export function ProbeDetail({ config, onBack }: ProbeDetailProps) {
+export function ProbeDetail({ config: initialConfig, onBack, onConfigUpdated }: ProbeDetailProps) {
+  const [showEditForm, setShowEditForm] = useState(false);
+  const [config, setConfig] = useState(initialConfig);
+  const queryClient = useQueryClient();
+
   const { data: results, isLoading } = useQuery({
     queryKey: ['probeResults', config.id],
     queryFn: () => api.getProbeResults(config.id),
     refetchInterval: 30000,
   });
+
+  const { data: watchers } = useQuery({
+    queryKey: ['watchers'],
+    queryFn: () => api.getWatchers(),
+    enabled: showEditForm,
+  });
+
+  const { data: probeTypes } = useQuery({
+    queryKey: ['probeTypes'],
+    queryFn: () => api.getProbeTypes(),
+    enabled: showEditForm,
+  });
+
+  const handleSaved = async () => {
+    setShowEditForm(false);
+    // Refresh the config data
+    const updatedConfig = await api.getProbeConfig(config.id);
+    setConfig(updatedConfig);
+    onConfigUpdated?.(updatedConfig);
+    queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+  };
 
   const chartData = results
     ?.slice(0, 50)
@@ -48,7 +76,15 @@ export function ProbeDetail({ config, onBack }: ProbeDetailProps) {
             <h1 className="text-2xl font-bold text-gray-900">{config.name}</h1>
             <p className="text-gray-500">{config.probe_type_name}</p>
           </div>
-          <StatusBadge status={config.last_status} size="lg" />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowEditForm(true)}
+              className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+            >
+              Edit
+            </button>
+            <StatusBadge status={config.last_status} size="lg" />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
@@ -147,6 +183,16 @@ export function ProbeDetail({ config, onBack }: ProbeDetailProps) {
           </div>
         )}
       </div>
+
+      {showEditForm && probeTypes && watchers && (
+        <ProbeConfigForm
+          probeTypes={probeTypes}
+          watchers={watchers}
+          editingConfig={config}
+          onClose={() => setShowEditForm(false)}
+          onSaved={handleSaved}
+        />
+      )}
     </div>
   );
 }
