@@ -234,14 +234,28 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, 
                         {key} <span className="text-red-500">*</span>
                         <span className="text-gray-400 ml-1">({spec.type})</span>
                       </label>
-                      <input
-                        type={spec.type === 'number' ? 'number' : 'text'}
-                        value={args[key] ?? ''}
-                        onChange={(e) => setArgs({ ...args, [key]: e.target.value })}
-                        required
-                        placeholder={spec.description}
-                        className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
+                      {spec.enum ? (
+                        <select
+                          value={args[key] ?? ''}
+                          onChange={(e) => setArgs({ ...args, [key]: e.target.value })}
+                          required
+                          className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="">Select {key}...</option>
+                          {spec.enum.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={spec.type === 'number' ? 'number' : 'text'}
+                          value={args[key] ?? ''}
+                          onChange={(e) => setArgs({ ...args, [key]: e.target.value })}
+                          required
+                          placeholder={spec.description}
+                          className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                      )}
                     </div>
                   ))}
                   {selectedType.arguments.optional && Object.entries(selectedType.arguments.optional).map(([key, spec]) => (
@@ -253,13 +267,26 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, 
                           <span className="text-gray-400 ml-1">= {String(spec.default)}</span>
                         )}
                       </label>
-                      <input
-                        type={spec.type === 'number' ? 'number' : 'text'}
-                        value={args[key] ?? ''}
-                        onChange={(e) => setArgs({ ...args, [key]: e.target.value })}
-                        placeholder={spec.description}
-                        className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
+                      {spec.enum ? (
+                        <select
+                          value={args[key] ?? ''}
+                          onChange={(e) => setArgs({ ...args, [key]: e.target.value })}
+                          className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                        >
+                          <option value="">{spec.default ? `Default: ${spec.default}` : `Select ${key}...`}</option>
+                          {spec.enum.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type={spec.type === 'number' ? 'number' : 'text'}
+                          value={args[key] ?? ''}
+                          onChange={(e) => setArgs({ ...args, [key]: e.target.value })}
+                          placeholder={spec.description}
+                          className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                        />
+                      )}
                     </div>
                   ))}
                 </div>

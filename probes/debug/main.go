@@ -20,9 +20,10 @@ type Arguments struct {
 }
 
 type ArgSpec struct {
-	Type        string `json:"type"`
-	Description string `json:"description"`
-	Default     any    `json:"default,omitempty"`
+	Type        string   `json:"type"`
+	Description string   `json:"description"`
+	Default     any      `json:"default,omitempty"`
+	Enum        []string `json:"enum,omitempty"`
 }
 
 type Result struct {
@@ -97,8 +98,9 @@ func printDescription() {
 			Optional: map[string]ArgSpec{
 				"mode": {
 					Type:        "string",
-					Description: "Behavior: ok, warning, critical, timeout, crash, error",
+					Description: "Probe behavior mode",
 					Default:     "ok",
+					Enum:        []string{"ok", "warning", "critical", "timeout", "crash", "error"},
 				},
 				"message": {
 					Type:        "string",

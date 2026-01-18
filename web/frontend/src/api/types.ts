@@ -33,6 +33,7 @@ export interface ArgumentSpec {
   type: string;
   description: string;
   default?: unknown;
+  enum?: string[];
 }
 
 export interface ProbeConfig {
