@@ -7,7 +7,7 @@ COPY web/frontend/ ./
 RUN npm run build
 
 # Build Go binary
-FROM golang:1.23-alpine AS go-builder
+FROM golang:1.24-alpine AS go-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
