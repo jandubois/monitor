@@ -12,6 +12,7 @@ export function Config({ onBack }: ConfigProps) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
+  const [initialProbeTypeId, setInitialProbeTypeId] = useState<number | undefined>();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -108,12 +109,24 @@ export function Config({ onBack }: ConfigProps) {
         ) : (
           <div className="grid gap-3">
             {probeTypes?.map((pt) => (
-              <div key={pt.id} className="border rounded p-3 bg-gray-50">
+              <div
+                key={pt.id}
+                className="border rounded p-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => {
+                  if (watchers?.length) {
+                    setEditingConfig(null);
+                    setInitialProbeTypeId(pt.id);
+                    setShowForm(true);
+                  }
+                }}
+                title="Click to add a probe of this type"
+              >
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="font-medium">{pt.name}</span>
                     <span className="text-gray-400 text-sm ml-2">v{pt.version}</span>
                   </div>
+                  <span className="text-xs text-gray-400">+ Add</span>
                 </div>
                 <p className="text-sm text-gray-600 mt-1">{pt.description}</p>
               </div>
@@ -127,7 +140,7 @@ export function Config({ onBack }: ConfigProps) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Probe Configurations</h2>
           <button
-            onClick={() => { setEditingConfig(null); setShowForm(true); }}
+            onClick={() => { setEditingConfig(null); setInitialProbeTypeId(undefined); setShowForm(true); }}
             disabled={!probeTypes?.length || !watchers?.length}
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
           >
@@ -189,6 +202,7 @@ export function Config({ onBack }: ConfigProps) {
           probeTypes={probeTypes}
           watchers={watchers}
           editingConfig={editingConfig}
+          initialProbeTypeId={initialProbeTypeId}
           onClose={() => setShowForm(false)}
           onSaved={() => {
             setShowForm(false);

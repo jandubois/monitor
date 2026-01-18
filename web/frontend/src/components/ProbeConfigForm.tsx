@@ -6,13 +6,14 @@ interface ProbeConfigFormProps {
   probeTypes: ProbeType[];
   watchers: Watcher[];
   editingConfig: ProbeConfig | null;
+  initialProbeTypeId?: number;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function ProbeConfigForm({ probeTypes, watchers, editingConfig, onClose, onSaved }: ProbeConfigFormProps) {
+export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialProbeTypeId, onClose, onSaved }: ProbeConfigFormProps) {
   const [name, setName] = useState(editingConfig?.name ?? '');
-  const [probeTypeId, setProbeTypeId] = useState(editingConfig?.probe_type_id ?? probeTypes[0]?.id ?? 0);
+  const [probeTypeId, setProbeTypeId] = useState(editingConfig?.probe_type_id ?? initialProbeTypeId ?? probeTypes[0]?.id ?? 0);
   const [watcherId, setWatcherId] = useState<number | undefined>(editingConfig?.watcher_id ?? watchers[0]?.id);
   const [enabled, setEnabled] = useState(editingConfig?.enabled ?? true);
   const [interval, setInterval] = useState(editingConfig?.interval ?? '5m');
