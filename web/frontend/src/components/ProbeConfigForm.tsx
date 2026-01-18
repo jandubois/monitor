@@ -218,12 +218,12 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
-                id="enabled"
-                checked={enabled}
-                onChange={(e) => setEnabled(e.target.checked)}
+                id="paused"
+                checked={!enabled}
+                onChange={(e) => setEnabled(!e.target.checked)}
                 className="rounded"
               />
-              <label htmlFor="enabled" className="text-sm text-gray-700">Enabled</label>
+              <label htmlFor="paused" className="text-sm text-gray-700">Paused</label>
             </div>
 
             {/* Arguments in two columns */}

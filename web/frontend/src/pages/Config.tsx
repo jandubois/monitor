@@ -162,9 +162,11 @@ export function Config({ onBack }: ConfigProps) {
                   {cfg.watcher_name && (
                     <span className="text-gray-400 text-sm ml-2">@{cfg.watcher_name}</span>
                   )}
-                  <span className={`ml-2 text-xs px-2 py-0.5 rounded ${cfg.enabled ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                    {cfg.enabled ? 'enabled' : 'disabled'}
-                  </span>
+                  {!cfg.enabled && (
+                    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-gray-200 text-gray-600">
+                      paused
+                    </span>
+                  )}
                   {cfg.group_path && (
                     <span className="text-xs text-gray-400 ml-2">{cfg.group_path}</span>
                   )}
