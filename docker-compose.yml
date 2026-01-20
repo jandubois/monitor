@@ -45,6 +45,8 @@ services:
     environment:
       AUTH_TOKEN: ${AUTH_TOKEN:-changeme}
       GH_TOKEN: ${GH_TOKEN:-}
+    volumes:
+      - ${HOME}:/host-home:ro
     depends_on:
       web:
         condition: service_healthy
