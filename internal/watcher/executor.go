@@ -86,6 +86,11 @@ func (e *Executor) runProbe(ctx context.Context, cfg *ProbeConfig) (*probe.Resul
 	// Build command arguments
 	args := buildArgs(cfg.Arguments)
 
+	// If subcommand is set, prepend it to args
+	if cfg.Subcommand != "" {
+		args = append([]string{cfg.Subcommand}, args...)
+	}
+
 	// Create timeout context
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
 	if timeout == 0 {
