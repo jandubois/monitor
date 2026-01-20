@@ -27,6 +27,7 @@ type RegisterProbeType struct {
 	Description    string         `json:"description"`
 	Arguments      map[string]any `json:"arguments"`
 	ExecutablePath string         `json:"executable_path"`
+	Subcommand     string         `json:"subcommand,omitempty"`
 }
 
 // HeartbeatRequest is sent periodically by watchers.
@@ -63,6 +64,7 @@ type ProbeConfigResponse struct {
 	ProbeTypeName  string         `json:"probe_type_name"`
 	ProbeVersion   string         `json:"probe_version"`
 	ExecutablePath string         `json:"executable_path"`
+	Subcommand     string         `json:"subcommand,omitempty"`
 	Name           string         `json:"name"`
 	Arguments      map[string]any `json:"arguments"`
 	Interval       string         `json:"interval"`
@@ -123,13 +125,14 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Link probe type to watcher with executable path
+		// Link probe type to watcher with executable path and subcommand
 		_, err = s.db.Pool().Exec(ctx, `
-			INSERT INTO watcher_probe_types (watcher_id, probe_type_id, executable_path)
-			VALUES ($1, $2, $3)
+			INSERT INTO watcher_probe_types (watcher_id, probe_type_id, executable_path, subcommand)
+			VALUES ($1, $2, $3, $4)
 			ON CONFLICT (watcher_id, probe_type_id) DO UPDATE SET
-				executable_path = EXCLUDED.executable_path
-		`, watcherID, probeTypeID, pt.ExecutablePath)
+				executable_path = EXCLUDED.executable_path,
+				subcommand = EXCLUDED.subcommand
+		`, watcherID, probeTypeID, pt.ExecutablePath, pt.Subcommand)
 		if err != nil {
 			slog.Error("failed to link probe type to watcher", "watcher", req.Name, "probe", pt.Name, "error", err)
 		}
@@ -364,7 +367,7 @@ func (s *Server) handlePushGetConfigs(w http.ResponseWriter, r *http.Request) {
 
 	// Get configs assigned to this watcher with probe type info
 	rows, err := s.db.Pool().Query(ctx, `
-		SELECT pc.id, pt.name, pt.version, wpt.executable_path, pc.name, pc.arguments,
+		SELECT pc.id, pt.name, pt.version, wpt.executable_path, wpt.subcommand, pc.name, pc.arguments,
 		       pc.interval, pc.timeout_seconds, pc.next_run_at
 		FROM probe_configs pc
 		JOIN probe_types pt ON pt.id = pc.probe_type_id
@@ -380,12 +383,16 @@ func (s *Server) handlePushGetConfigs(w http.ResponseWriter, r *http.Request) {
 	var configs []ProbeConfigResponse
 	for rows.Next() {
 		var cfg ProbeConfigResponse
+		var subcommand *string
 		if err := rows.Scan(
-			&cfg.ID, &cfg.ProbeTypeName, &cfg.ProbeVersion, &cfg.ExecutablePath,
+			&cfg.ID, &cfg.ProbeTypeName, &cfg.ProbeVersion, &cfg.ExecutablePath, &subcommand,
 			&cfg.Name, &cfg.Arguments, &cfg.Interval, &cfg.TimeoutSeconds, &cfg.NextRunAt,
 		); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+		if subcommand != nil {
+			cfg.Subcommand = *subcommand
 		}
 		configs = append(configs, cfg)
 	}

@@ -14,6 +14,7 @@ type ProbeConfig struct {
 	ID                   int
 	Name                 string
 	ExecutablePath       string
+	Subcommand           string // If set, execute as: binary <subcommand> --args
 	Arguments            map[string]any
 	Interval             time.Duration
 	TimeoutSeconds       int
@@ -94,6 +95,7 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 			ID:             cfg.ID,
 			Name:           cfg.Name,
 			ExecutablePath: cfg.ExecutablePath,
+			Subcommand:     cfg.Subcommand,
 			Arguments:      cfg.Arguments,
 			Interval:       interval,
 			TimeoutSeconds: cfg.TimeoutSeconds,
@@ -196,6 +198,9 @@ func (s *Scheduler) calculateNextRun(cfg *ProbeConfig) time.Duration {
 
 func (s *Scheduler) configChanged(old, new *ProbeConfig) bool {
 	if old.ExecutablePath != new.ExecutablePath {
+		return true
+	}
+	if old.Subcommand != new.Subcommand {
 		return true
 	}
 	if old.Interval != new.Interval {

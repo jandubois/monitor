@@ -25,6 +25,7 @@ type Description struct {
 	Description string    `json:"description"`
 	Version     string    `json:"version"`
 	Arguments   Arguments `json:"arguments"`
+	Subcommand  string    `json:"subcommand,omitempty"` // If set, execute as: binary <subcommand> --args
 }
 
 // Arguments describes required and optional probe arguments.

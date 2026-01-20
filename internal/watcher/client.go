@@ -45,6 +45,7 @@ type RegisterProbeType struct {
 	Description    string         `json:"description"`
 	Arguments      map[string]any `json:"arguments"`
 	ExecutablePath string         `json:"executable_path"`
+	Subcommand     string         `json:"subcommand,omitempty"`
 }
 
 // RegisterResponse is returned from registration.
@@ -79,6 +80,7 @@ type ProbeConfigResponse struct {
 	ProbeTypeName  string         `json:"probe_type_name"`
 	ProbeVersion   string         `json:"probe_version"`
 	ExecutablePath string         `json:"executable_path"`
+	Subcommand     string         `json:"subcommand,omitempty"`
 	Name           string         `json:"name"`
 	Arguments      map[string]any `json:"arguments"`
 	Interval       string         `json:"interval"`
