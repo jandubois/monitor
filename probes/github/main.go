@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -119,28 +120,31 @@ func main() {
 		"deletions":     commit.Stats.Deletions,
 	}
 
-	// Truncate commit message to first line
-	message := commit.Commit.Message
-	for i, c := range message {
-		if c == '\n' {
-			message = message[:i]
-			break
-		}
-	}
+	// Parse commit message into title and body
+	commitTitle, commitBody := parseCommitMessage(commit.Commit.Message)
+
+	// Build commit URL
+	commitURL := fmt.Sprintf("https://github.com/%s/commit/%s", *repo, commit.SHA)
 
 	data := map[string]any{
-		"sha":            commit.SHA[:7],
-		"message":        message,
-		"author_date":    commit.Commit.Author.Date.Format(time.RFC3339),
-		"files_changed":  filesChanged,
-		"additions":      commit.Stats.Additions,
-		"deletions":      commit.Stats.Deletions,
+		"sha":           commit.SHA[:7],
+		"full_sha":      commit.SHA,
+		"title":         commitTitle,
+		"body":          commitBody,
+		"url":           commitURL,
+		"author_date":   commit.Commit.Author.Date.Format(time.RFC3339),
+		"files_changed": filesChanged,
+		"additions":     commit.Stats.Additions,
+		"deletions":     commit.Stats.Deletions,
 	}
+
+	// Build Markdown message
+	message := formatCommitMessage(*repo, commit, commitURL)
 
 	if len(failures) > 0 {
 		result := Result{
 			Status:  "critical",
-			Message: fmt.Sprintf("Commit check failed: %s", failures[0]),
+			Message: fmt.Sprintf("**Commit check failed:** %s\n\n%s", failures[0], message),
 			Metrics: metrics,
 			Data:    data,
 		}
@@ -150,7 +154,7 @@ func main() {
 
 	result := Result{
 		Status:  "ok",
-		Message: fmt.Sprintf("%s: %s (+%d/-%d in %d files)", commit.SHA[:7], message, commit.Stats.Additions, commit.Stats.Deletions, filesChanged),
+		Message: message,
 		Metrics: metrics,
 		Data:    data,
 	}
@@ -247,6 +251,36 @@ func printDescription() {
 		},
 	}
 	json.NewEncoder(os.Stdout).Encode(desc)
+}
+
+func parseCommitMessage(msg string) (title, body string) {
+	parts := strings.SplitN(msg, "\n", 2)
+	title = strings.TrimSpace(parts[0])
+	if len(parts) > 1 {
+		body = strings.TrimSpace(parts[1])
+	}
+	return
+}
+
+func formatCommitMessage(repo string, commit *Commit, commitURL string) string {
+	var sb strings.Builder
+
+	title, body := parseCommitMessage(commit.Commit.Message)
+
+	// Commit link and title
+	sb.WriteString(fmt.Sprintf("[%s](%s) **%s**\n\n", commit.SHA[:7], commitURL, title))
+
+	// Commit body if present
+	if body != "" {
+		sb.WriteString(body)
+		sb.WriteString("\n\n")
+	}
+
+	// Stats line
+	sb.WriteString(fmt.Sprintf("**+%d** / **-%d** in %d files",
+		commit.Stats.Additions, commit.Stats.Deletions, len(commit.Files)))
+
+	return sb.String()
 }
 
 func output(status, message string) {
