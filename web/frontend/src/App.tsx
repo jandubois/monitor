@@ -23,7 +23,7 @@ function App() {
   const [authenticated, setAuthenticated] = useState(false);
   const [page, setPage] = useState<Page>('dashboard');
   const [selectedConfig, setSelectedConfig] = useState<ProbeConfig | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !!api.getToken());
 
   useEffect(() => {
     const token = api.getToken();
@@ -32,8 +32,6 @@ function App() {
         .then(() => setAuthenticated(true))
         .catch(() => api.clearToken())
         .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
     }
   }, []);
 

@@ -1,9 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { ProbeCard } from '../components/ProbeCard';
+import { ProbeRow } from '../components/ProbeRow';
 import { ProbeConfigForm } from '../components/ProbeConfigForm';
 import type { ProbeConfig, ProbeResult } from '../api/types';
+
+const COLLAPSED_GROUPS_KEY = 'dashboard-collapsed-groups';
+
+function formatRelativeTime(timestamp: string): string {
+  const diff = Date.now() - new Date(timestamp).getTime();
+  if (diff < 60000) return 'now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
+  return `${Math.floor(diff / 86400000)}d`;
+}
 
 interface DashboardProps {
   onProbeClick: (config: ProbeConfig) => void;
@@ -13,7 +23,33 @@ interface DashboardProps {
 
 export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: DashboardProps) {
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
+  const [keywordFilter, setKeywordFilter] = useState('');
+  const [runningProbes, setRunningProbes] = useState<Set<number>>(new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem(COLLAPSED_GROUPS_KEY);
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    localStorage.setItem(COLLAPSED_GROUPS_KEY, JSON.stringify([...collapsedGroups]));
+  }, [collapsedGroups]);
+
+  const toggleGroup = (group: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) {
+        next.delete(group);
+      } else {
+        next.add(group);
+      }
+      return next;
+    });
+  };
 
   const { data: status } = useQuery({
     queryKey: ['status'],
@@ -51,10 +87,48 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
     enabled: !!editingConfig,
   });
 
+  // Mark a probe as running and poll for completion
+  const trackRunningProbe = (id: number) => {
+    setRunningProbes(prev => new Set(prev).add(id));
+
+    const pollForResult = async () => {
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        await queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+        const configs = queryClient.getQueryData<ProbeConfig[]>(['probeConfigs']);
+        const config = configs?.find(c => c.id === id);
+        if (config?.last_executed_at) {
+          const lastRun = new Date(config.last_executed_at).getTime();
+          if (Date.now() - lastRun < 5000) {
+            setRunningProbes(prev => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+            return;
+          }
+        }
+      }
+      setRunningProbes(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    };
+    pollForResult();
+  };
+
   const rerunMutation = useMutation({
     mutationFn: (id: number) => api.triggerProbe(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+    onMutate: (id) => {
+      trackRunningProbe(id);
+    },
+    onError: (_error, id) => {
+      setRunningProbes(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     },
   });
 
@@ -66,15 +140,20 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
     },
   });
 
-  const formatRelativeTime = (timestamp: string) => {
-    const diff = Date.now() - new Date(timestamp).getTime();
-    if (diff < 60000) return 'now';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-    return `${Math.floor(diff / 86400000)}d`;
-  };
+  // Filter by keyword, then sort, then group
+  const filteredConfigs = configs?.filter(config => {
+    if (!keywordFilter.trim()) return true;
+    const filterLower = keywordFilter.toLowerCase();
+    // Match against keywords array if present
+    if (config.keywords?.some(k => k.toLowerCase().includes(filterLower))) {
+      return true;
+    }
+    // Also match against name and probe type
+    return config.name.toLowerCase().includes(filterLower) ||
+           config.probe_type_name?.toLowerCase().includes(filterLower);
+  });
 
-  const sortedConfigs = configs?.sort((a, b) => {
+  const sortedConfigs = filteredConfigs?.sort((a, b) => {
     const statusOrder = { critical: 0, warning: 1, unknown: 2, ok: 3 };
     const aOrder = a.last_status ? statusOrder[a.last_status] : 4;
     const bOrder = b.last_status ? statusOrder[b.last_status] : 4;
@@ -179,34 +258,88 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
         </div>
       </div>
 
+      <div className="mb-4">
+        <input
+          type="text"
+          value={keywordFilter}
+          onChange={(e) => setKeywordFilter(e.target.value)}
+          placeholder="Filter by keyword..."
+          className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
       {isLoading ? (
         <div className="text-center py-12 text-gray-500">Loading probes...</div>
       ) : sortedConfigs?.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          No probes configured yet.
+          {keywordFilter ? 'No probes match this filter.' : 'No probes configured yet.'}
         </div>
       ) : (
-        <div className="space-y-6">
-          {groups.map((group) => (
-            <div key={group}>
-              <h2 className="text-lg font-semibold text-gray-700 mb-3">{group}</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {groupedConfigs![group].map((config) => (
-                  <ProbeCard
-                    key={config.id}
-                    config={config}
-                    onStatusClick={() => onProbeClick(config)}
-                    onEdit={() => setEditingConfig(config)}
-                    onRerun={() => rerunMutation.mutate(config.id)}
-                    onPauseToggle={() => pauseToggleMutation.mutate({
-                      id: config.id,
-                      enabled: !config.enabled,
-                    })}
-                  />
-                ))}
+        <div className="space-y-4">
+          {groups.map((group) => {
+            const isCollapsed = collapsedGroups.has(group);
+            const groupProbes = groupedConfigs![group];
+            const statusCounts = groupProbes.reduce(
+              (acc, c) => {
+                const status = c.last_status || 'unknown';
+                acc[status] = (acc[status] || 0) + 1;
+                return acc;
+              },
+              {} as Record<string, number>
+            );
+            return (
+              <div key={group} className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+                <button
+                  onClick={() => toggleGroup(group)}
+                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-lg font-semibold text-gray-700">{group}</h2>
+                    <div className="flex gap-2 text-xs">
+                      {statusCounts.ok > 0 && (
+                        <span className="text-green-600">{statusCounts.ok} ok</span>
+                      )}
+                      {statusCounts.warning > 0 && (
+                        <span className="text-yellow-600">{statusCounts.warning} warn</span>
+                      )}
+                      {statusCounts.critical > 0 && (
+                        <span className="text-red-600">{statusCounts.critical} crit</span>
+                      )}
+                      {statusCounts.unknown > 0 && (
+                        <span className="text-gray-500">{statusCounts.unknown} unknown</span>
+                      )}
+                    </div>
+                  </div>
+                  <svg
+                    className={`w-5 h-5 text-gray-500 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {!isCollapsed && (
+                  <div className="divide-y divide-gray-100">
+                    {groupedConfigs![group].map((config) => (
+                      <ProbeRow
+                        key={config.id}
+                        config={config}
+                        isRunning={runningProbes.has(config.id)}
+                        onClick={() => onProbeClick(config)}
+                        onEdit={() => setEditingConfig(config)}
+                        onRerun={() => rerunMutation.mutate(config.id)}
+                        onPauseToggle={() => pauseToggleMutation.mutate({
+                          id: config.id,
+                          enabled: !config.enabled,
+                        })}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -220,6 +353,7 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
             setEditingConfig(null);
             queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
           }}
+          onRerun={trackRunningProbe}
         />
       )}
     </div>
