@@ -16,11 +16,14 @@ var rootCmd = &cobra.Command{
 	Long:  `Monitor tracks diverse digital systems with flexible, self-describing probes.`,
 }
 
+const probeGroupID = "probes"
+
 func Execute() error {
 	return rootCmd.Execute()
 }
 
 func init() {
+	rootCmd.AddGroup(&cobra.Group{ID: probeGroupID, Title: "Built-in Probes:"})
 	rootCmd.PersistentFlags().StringP("database-url", "d", "", "PostgreSQL connection URL")
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
 }

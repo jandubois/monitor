@@ -114,6 +114,11 @@ func init() {
 	}
 
 	// Add probe subcommands
+	diskSpaceCmd.GroupID = probeGroupID
+	commandCmd.GroupID = probeGroupID
+	debugCmd.GroupID = probeGroupID
+	githubCmd.GroupID = probeGroupID
+	gitStatusCmd.GroupID = probeGroupID
 	rootCmd.AddCommand(diskSpaceCmd)
 	rootCmd.AddCommand(commandCmd)
 	rootCmd.AddCommand(debugCmd)
