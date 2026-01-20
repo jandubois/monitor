@@ -93,6 +93,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: monitor-*
           merge-multiple: true
 
       - name: Generate checksums
