@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/jandubois/monitor/internal/config"
@@ -19,23 +20,20 @@ var watcherCmd = &cobra.Command{
 	Long: `The watcher service schedules and executes probes, pushing results
 to the central web service via HTTP.
 
-Each watcher must have a unique name and requires the web service URL
-and authentication token to communicate.`,
+The watcher name defaults to the hostname. Use --name to override.`,
 	RunE: runWatcher,
 }
 
 func init() {
 	rootCmd.AddCommand(watcherCmd)
 
-	watcherCmd.Flags().String("name", "", "Unique watcher name (required)")
+	watcherCmd.Flags().String("name", "", "Unique watcher name (defaults to hostname)")
 	watcherCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
 	watcherCmd.Flags().String("callback-url", "", "URL where web service can reach this watcher (for triggers)")
 	watcherCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env var)")
 	watcherCmd.Flags().String("probes-dir", "./probes", "Directory containing probe executables")
 	watcherCmd.Flags().Int("max-concurrent", 10, "Maximum concurrent probe executions")
 	watcherCmd.Flags().Int("api-port", 8081, "Port for local watcher API (health check, reload)")
-
-	watcherCmd.MarkFlagRequired("name")
 }
 
 func runWatcher(cmd *cobra.Command, args []string) error {
@@ -58,6 +56,11 @@ func runWatcher(cmd *cobra.Command, args []string) error {
 	probesDir, _ := cmd.Flags().GetString("probes-dir")
 	maxConcurrent, _ := cmd.Flags().GetInt("max-concurrent")
 	apiPort, _ := cmd.Flags().GetInt("api-port")
+
+	// Default name to hostname (without domain)
+	if name == "" {
+		name = getShortHostname()
+	}
 
 	// Auth token from env if not provided via flag
 	if authToken == "" {
@@ -91,4 +94,16 @@ func runWatcher(cmd *cobra.Command, args []string) error {
 		"max_concurrent", maxConcurrent,
 	)
 	return w.Run(ctx)
+}
+
+func getShortHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "unknown"
+	}
+	// Strip domain suffix
+	if idx := strings.Index(hostname, "."); idx != -1 {
+		hostname = hostname[:idx]
+	}
+	return hostname
 }

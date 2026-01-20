@@ -79,12 +79,10 @@ func init() {
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(uninstallCmd)
 
-	installCmd.Flags().String("name", "", "Unique watcher name (required)")
+	installCmd.Flags().String("name", "", "Unique watcher name (defaults to hostname)")
 	installCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
 	installCmd.Flags().String("callback-url", "http://localhost:8081", "URL where web service can reach this watcher")
 	installCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env var)")
-
-	installCmd.MarkFlagRequired("name")
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
@@ -96,6 +94,11 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	pushURL, _ := cmd.Flags().GetString("push-url")
 	callbackURL, _ := cmd.Flags().GetString("callback-url")
 	authToken, _ := cmd.Flags().GetString("auth-token")
+
+	// Default name to hostname
+	if name == "" {
+		name = getShortHostname()
+	}
 
 	// Allow auth token from environment
 	if authToken == "" {
