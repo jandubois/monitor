@@ -14,7 +14,10 @@ services:
       retries: 5
 
   migrate:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
     command: migrate
     environment:
       DATABASE_URL: postgres://monitor:monitor@postgres:5432/monitor?sslmode=disable
@@ -23,7 +26,10 @@ services:
         condition: service_healthy
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
     command: web
     ports:
       - "8080:8080"
@@ -40,7 +46,10 @@ services:
         condition: service_completed_successfully
 
   watcher:
-    build: .
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
     command: ["watcher", "--name", "default", "--push-url", "http://web:8080", "--callback-url", "http://watcher:8081"]
     environment:
       AUTH_TOKEN: ${AUTH_TOKEN:-changeme}

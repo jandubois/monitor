@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/jankremlacek/monitor/internal/probe"
@@ -95,13 +96,17 @@ var gitStatusCmd = &cobra.Command{
 }
 
 func init() {
-	// Add --describe flag to root
+	// Add flags to root
+	rootCmd.Flags().BoolP("version", "v", false, "Print version and exit")
 	rootCmd.Flags().Bool("describe", false, "Output built-in probe descriptions as JSON array")
 
-	// Override Run to handle --describe
+	// Override Run to handle flags
 	rootCmd.Run = func(cmd *cobra.Command, args []string) {
-		describe, _ := cmd.Flags().GetBool("describe")
-		if describe {
+		if v, _ := cmd.Flags().GetBool("version"); v {
+			fmt.Printf("monitor version %s\n", Version)
+			return
+		}
+		if describe, _ := cmd.Flags().GetBool("describe"); describe {
 			printDescriptions()
 			return
 		}

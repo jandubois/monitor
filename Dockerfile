@@ -8,12 +8,14 @@ RUN npm run build
 
 # Build Go binary (includes all built-in probes)
 FROM golang:1.24-alpine AS go-builder
+RUN apk add --no-cache git
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend-builder /app/web/frontend/dist ./internal/web/frontend/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -o monitor .
+ARG VERSION=dev
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/jankremlacek/monitor/cmd.Version=${VERSION}" -o monitor .
 
 # Final image
 FROM alpine:3.21
