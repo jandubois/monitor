@@ -131,6 +131,7 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 }
 
 // TriggerImmediate runs a probe immediately with fresh config.
+// Execution happens asynchronously; this returns immediately after scheduling.
 func (s *Scheduler) TriggerImmediate(ctx context.Context, configIDStr string) error {
 	configID, err := strconv.Atoi(configIDStr)
 	if err != nil {
@@ -150,7 +151,14 @@ func (s *Scheduler) TriggerImmediate(ctx context.Context, configIDStr string) er
 		return nil // Config not assigned to this watcher
 	}
 
-	return s.executor.Execute(ctx, cfg)
+	// Run asynchronously so the HTTP trigger returns immediately
+	go func() {
+		if err := s.executor.Execute(context.Background(), cfg); err != nil {
+			slog.Error("triggered probe execution failed", "name", cfg.Name, "error", err)
+		}
+	}()
+
+	return nil
 }
 
 func (s *Scheduler) scheduleProbe(ctx context.Context, cfg *ProbeConfig) {
