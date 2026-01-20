@@ -1,10 +1,14 @@
 # Production deployment using pre-built image from ghcr.io
 #
+# Setup:
+#   mkdir -p /path/to/data/secrets
+#   echo "your-auth-token" > /path/to/data/secrets/auth_token
+#
 # Usage:
-#   AUTH_TOKEN=<token> DATA_DIR=/path/to/data docker compose -f docker-compose.prod.yml up -d
+#   DATA_DIR=/path/to/data docker compose -f docker-compose.prod.yml up -d
 #
 # Override watcher name (defaults to "nas"):
-#   WATCHER_NAME=synology AUTH_TOKEN=<token> DATA_DIR=/path/to/data docker compose ...
+#   DATA_DIR=/path/to/data WATCHER_NAME=synology docker compose ...
 
 services:
   postgres:
@@ -33,13 +37,14 @@ services:
 
   web:
     image: ghcr.io/jandubois/monitor:v0.1.0
-    command: web
+    command: sh -c 'AUTH_TOKEN=$$(cat /secrets/auth_token) exec /app/monitor web'
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
       DATABASE_URL: postgres://monitor:monitor@postgres:5432/monitor?sslmode=disable
-      AUTH_TOKEN: ${AUTH_TOKEN:?AUTH_TOKEN is required}
+    volumes:
+      - ${DATA_DIR:?DATA_DIR is required}/secrets:/secrets:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
       interval: 5s
@@ -52,13 +57,13 @@ services:
   watcher:
     image: ghcr.io/jandubois/monitor:v0.1.0
     command: >
-      watcher
+      sh -c 'AUTH_TOKEN=$$(cat /secrets/auth_token) exec /app/monitor watcher
       --name=${WATCHER_NAME:-nas}
       --push-url=http://web:8080
-      --callback-url=http://watcher:8081
+      --callback-url=http://watcher:8081'
     restart: unless-stopped
-    environment:
-      AUTH_TOKEN: ${AUTH_TOKEN:?AUTH_TOKEN is required}
+    volumes:
+      - ${DATA_DIR:?DATA_DIR is required}/secrets:/secrets:ro
     depends_on:
       web:
         condition: service_healthy
