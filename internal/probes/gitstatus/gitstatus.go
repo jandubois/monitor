@@ -185,6 +185,14 @@ func formatDuration(hours float64) string {
 
 func findGitRepos(root string) []string {
 	var repos []string
+
+	// Track repos and their submodule paths
+	type repoInfo struct {
+		path       string
+		submodules map[string]bool // absolute paths of submodules
+	}
+	var repoStack []repoInfo
+
 	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -195,13 +203,35 @@ func findGitRepos(root string) []string {
 
 		name := d.Name()
 
+		// Skip .git directories
 		if name == ".git" {
-			repos = append(repos, filepath.Dir(path))
 			return filepath.SkipDir
 		}
 
-		if isGitIgnored(path) {
-			return filepath.SkipDir
+		// Pop repos we've exited
+		for len(repoStack) > 0 {
+			current := repoStack[len(repoStack)-1]
+			if strings.HasPrefix(path, current.path+string(os.PathSeparator)) || path == current.path {
+				break
+			}
+			repoStack = repoStack[:len(repoStack)-1]
+		}
+
+		// Check if this directory is a repo root (has .git)
+		gitPath := filepath.Join(path, ".git")
+		if _, err := os.Stat(gitPath); err == nil {
+			repos = append(repos, path)
+			submodules := getSubmodulePaths(path)
+			repoStack = append(repoStack, repoInfo{path: path, submodules: submodules})
+			return nil // Continue into repo to find submodules
+		}
+
+		// If we're inside a repo, only continue into submodule paths
+		if len(repoStack) > 0 {
+			current := repoStack[len(repoStack)-1]
+			if path != current.path && !current.submodules[path] {
+				return filepath.SkipDir
+			}
 		}
 
 		return nil
@@ -209,24 +239,30 @@ func findGitRepos(root string) []string {
 	return repos
 }
 
-func isGitIgnored(path string) bool {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	cmd.Dir = filepath.Dir(path)
-	out, err := cmd.Output()
-	if err != nil {
-		return false
-	}
-	repoRoot := strings.TrimSpace(string(out))
+// getSubmodulePaths parses .gitmodules and returns absolute paths of submodules.
+func getSubmodulePaths(repoPath string) map[string]bool {
+	result := make(map[string]bool)
 
-	relPath, err := filepath.Rel(repoRoot, path)
+	gitmodulesPath := filepath.Join(repoPath, ".gitmodules")
+	data, err := os.ReadFile(gitmodulesPath)
 	if err != nil {
-		return false
+		return result // No submodules
 	}
 
-	cmd = exec.Command("git", "check-ignore", "-q", relPath)
-	cmd.Dir = repoRoot
-	err = cmd.Run()
-	return err == nil
+	// Parse .gitmodules to find path = <submodule-path> lines
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "path") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				subPath := strings.TrimSpace(parts[1])
+				absPath := filepath.Join(repoPath, subPath)
+				result[absPath] = true
+			}
+		}
+	}
+
+	return result
 }
 
 func checkRepo(repoPath string, uncommittedHours, unpushedHours float64, excludeAIFiles bool) (issues []string, isWarningOnly bool) {
