@@ -34,10 +34,6 @@ var launchAgentPlist = `<?xml version="1.0" encoding="UTF-8"?>
     <dict>
         <key>AUTH_TOKEN</key>
         <string>{{.AuthToken}}</string>
-{{- if .GHToken}}
-        <key>GH_TOKEN</key>
-        <string>{{.GHToken}}</string>
-{{- end}}
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -58,7 +54,6 @@ type plistData struct {
 	PushURL     string
 	CallbackURL string
 	AuthToken   string
-	GHToken     string
 	LogDir      string
 }
 
@@ -88,7 +83,6 @@ func init() {
 	installCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
 	installCmd.Flags().String("callback-url", "http://localhost:8081", "URL where web service can reach this watcher")
 	installCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env var)")
-	installCmd.Flags().String("gh-token", "", "GitHub token for github probe")
 
 	installCmd.MarkFlagRequired("name")
 }
@@ -102,20 +96,13 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	pushURL, _ := cmd.Flags().GetString("push-url")
 	callbackURL, _ := cmd.Flags().GetString("callback-url")
 	authToken, _ := cmd.Flags().GetString("auth-token")
-	ghToken, _ := cmd.Flags().GetString("gh-token")
 
-	// Allow tokens from environment
+	// Allow auth token from environment
 	if authToken == "" {
 		authToken = os.Getenv("AUTH_TOKEN")
 	}
 	if authToken == "" {
 		return fmt.Errorf("auth token required (use --auth-token or AUTH_TOKEN env var)")
-	}
-	if ghToken == "" {
-		ghToken = os.Getenv("GH_TOKEN")
-		if ghToken == "" {
-			ghToken = os.Getenv("GITHUB_TOKEN")
-		}
 	}
 
 	// Get the path to the current executable
@@ -160,7 +147,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		PushURL:     pushURL,
 		CallbackURL: callbackURL,
 		AuthToken:   authToken,
-		GHToken:     ghToken,
 		LogDir:      logDir,
 	}
 

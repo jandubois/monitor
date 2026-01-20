@@ -3,7 +3,10 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/jandubois/monitor/internal/probe"
 	"github.com/jandubois/monitor/internal/probes"
@@ -70,10 +73,7 @@ var githubCmd = &cobra.Command{
 		minFiles, _ := cmd.Flags().GetInt("min_files")
 		minAdditions, _ := cmd.Flags().GetInt("min_additions")
 
-		token := os.Getenv("GH_TOKEN")
-		if token == "" {
-			token = os.Getenv("GITHUB_TOKEN")
-		}
+		token := getGitHubToken()
 
 		result := github.Run(repo, branch, token, maxAgeHours, minFiles, minAdditions)
 		outputResult(result)
@@ -163,4 +163,22 @@ func printDescriptions() {
 
 func outputResult(result *probe.Result) {
 	json.NewEncoder(os.Stdout).Encode(result)
+}
+
+func getGitHubToken() string {
+	if token := os.Getenv("GH_TOKEN"); token != "" {
+		return token
+	}
+	if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+		return token
+	}
+
+	// Try gh auth token
+	out, err := exec.Command("gh", "auth", "token").Output()
+	if err != nil {
+		slog.Error("failed to get GitHub token", "error", err,
+			"hint", "set GH_TOKEN or run 'gh auth login'")
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
