@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { api } from '../api/client';
 import { StatusBadge } from '../components/StatusBadge';
 import { ProbeConfigForm } from '../components/ProbeConfigForm';
@@ -184,7 +186,18 @@ export function ProbeDetail({ config: initialConfig, onBack, onConfigUpdated }: 
                   <StatusBadge status={result.status} size="sm" />
                   <span className="text-sm text-gray-500">{formatDate(result.executed_at)}</span>
                 </div>
-                <p className="text-sm text-gray-700">{result.message}</p>
+                <div className="text-sm text-gray-700 prose prose-sm max-w-none">
+                  <ReactMarkdown
+                    rehypePlugins={[rehypeRaw]}
+                    components={{
+                      a: ({ href, children }) => (
+                        <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+                      ),
+                    }}
+                  >
+                    {result.message}
+                  </ReactMarkdown>
+                </div>
                 <div className="mt-1 text-xs text-gray-400">
                   Duration: {result.duration_ms}ms
                 </div>
