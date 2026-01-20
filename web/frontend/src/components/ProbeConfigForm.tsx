@@ -9,9 +9,10 @@ interface ProbeConfigFormProps {
   initialProbeTypeId?: number;
   onClose: () => void;
   onSaved: () => void;
+  onRerun?: (id: number) => void;
 }
 
-export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialProbeTypeId, onClose, onSaved }: ProbeConfigFormProps) {
+export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialProbeTypeId, onClose, onSaved, onRerun }: ProbeConfigFormProps) {
   const [name, setName] = useState(editingConfig?.name ?? '');
   const [probeTypeId, setProbeTypeId] = useState(editingConfig?.probe_type_id ?? initialProbeTypeId ?? probeTypes[0]?.id ?? 0);
   const [watcherId, setWatcherId] = useState<number | undefined>(editingConfig?.watcher_id ?? watchers[0]?.id);
@@ -47,16 +48,27 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
 
     // Convert string args to appropriate types
     const typedArgs: Record<string, unknown> = {};
-    if (selectedType?.arguments) {
-      const allArgs = { ...selectedType.arguments.required, ...selectedType.arguments.optional };
-      for (const [key, value] of Object.entries(args)) {
-        if (value === '') continue;
-        const spec = allArgs?.[key];
-        if (spec?.type === 'number') {
-          typedArgs[key] = parseFloat(value);
-        } else if (spec?.type === 'boolean') {
-          typedArgs[key] = value === 'true';
-        } else {
+    const allArgs = selectedType?.arguments
+      ? { ...selectedType.arguments.required, ...selectedType.arguments.optional }
+      : {};
+
+    for (const [key, value] of Object.entries(args)) {
+      if (value === '') continue;
+      const spec = allArgs[key];
+      if (spec?.type === 'number') {
+        typedArgs[key] = parseFloat(value);
+      } else if (spec?.type === 'boolean') {
+        typedArgs[key] = value === 'true';
+      } else {
+        typedArgs[key] = value;
+      }
+    }
+
+    // When editing, preserve any original args that weren't in the form
+    // (in case the probe type schema changed or wasn't loaded)
+    if (editingConfig?.arguments) {
+      for (const [key, value] of Object.entries(editingConfig.arguments)) {
+        if (!(key in typedArgs) && !(key in args)) {
           typedArgs[key] = value;
         }
       }
@@ -84,6 +96,7 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
         // Trigger immediate rerun after edit (only if enabled)
         if (enabled) {
           await api.triggerProbe(editingConfig.id);
+          onRerun?.(editingConfig.id);
         }
       } else {
         const result = await api.createProbeConfig({
@@ -100,6 +113,7 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
         });
         // Trigger immediate run for new probe
         await api.triggerProbe(result.id);
+        onRerun?.(result.id);
       }
       onSaved();
     } catch (err) {
@@ -249,6 +263,17 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
                             <option key={opt} value={opt}>{opt}</option>
                           ))}
                         </select>
+                      ) : spec.type === 'boolean' ? (
+                        <div className="flex items-center gap-2 py-2">
+                          <input
+                            type="checkbox"
+                            id={`arg-${key}`}
+                            checked={args[key] === 'true'}
+                            onChange={(e) => setArgs({ ...args, [key]: e.target.checked ? 'true' : 'false' })}
+                            className="rounded"
+                          />
+                          <label htmlFor={`arg-${key}`} className="text-sm text-gray-600">{spec.description}</label>
+                        </div>
                       ) : (
                         <input
                           type={spec.type === 'number' ? 'number' : 'text'}
@@ -281,6 +306,17 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
                             <option key={opt} value={opt}>{opt}</option>
                           ))}
                         </select>
+                      ) : spec.type === 'boolean' ? (
+                        <div className="flex items-center gap-2 py-2">
+                          <input
+                            type="checkbox"
+                            id={`arg-${key}`}
+                            checked={args[key] === 'true'}
+                            onChange={(e) => setArgs({ ...args, [key]: e.target.checked ? 'true' : 'false' })}
+                            className="rounded"
+                          />
+                          <label htmlFor={`arg-${key}`} className="text-sm text-gray-600">{spec.description}</label>
+                        </div>
                       ) : (
                         <input
                           type={spec.type === 'number' ? 'number' : 'text'}
