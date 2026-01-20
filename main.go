@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/jankremlacek/monitor/cmd"
+	"github.com/jandubois/monitor/cmd"
 )
 
 func main() {

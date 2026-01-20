@@ -8,8 +8,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/jankremlacek/monitor/internal/config"
-	"github.com/jankremlacek/monitor/internal/watcher"
+	"github.com/jandubois/monitor/internal/config"
+	"github.com/jandubois/monitor/internal/watcher"
 	"github.com/spf13/cobra"
 )
 

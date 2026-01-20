@@ -8,9 +8,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/jankremlacek/monitor/internal/config"
-	"github.com/jankremlacek/monitor/internal/db"
-	"github.com/jankremlacek/monitor/internal/web"
+	"github.com/jandubois/monitor/internal/config"
+	"github.com/jandubois/monitor/internal/db"
+	"github.com/jandubois/monitor/internal/web"
 	"github.com/spf13/cobra"
 )
 

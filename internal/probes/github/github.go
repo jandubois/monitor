@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jankremlacek/monitor/internal/probe"
+	"github.com/jandubois/monitor/internal/probe"
 )
 
 // Name is the probe subcommand name.

@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jankremlacek/monitor/internal/probe"
+	"github.com/jandubois/monitor/internal/probe"
 )
 
 // Client communicates with the web service via HTTP.

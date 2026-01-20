@@ -5,13 +5,13 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/jankremlacek/monitor/internal/probe"
-	"github.com/jankremlacek/monitor/internal/probes"
-	"github.com/jankremlacek/monitor/internal/probes/command"
-	"github.com/jankremlacek/monitor/internal/probes/debug"
-	"github.com/jankremlacek/monitor/internal/probes/diskspace"
-	"github.com/jankremlacek/monitor/internal/probes/github"
-	"github.com/jankremlacek/monitor/internal/probes/gitstatus"
+	"github.com/jandubois/monitor/internal/probe"
+	"github.com/jandubois/monitor/internal/probes"
+	"github.com/jandubois/monitor/internal/probes/command"
+	"github.com/jandubois/monitor/internal/probes/debug"
+	"github.com/jandubois/monitor/internal/probes/diskspace"
+	"github.com/jandubois/monitor/internal/probes/github"
+	"github.com/jandubois/monitor/internal/probes/gitstatus"
 	"github.com/spf13/cobra"
 )
 

@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jankremlacek/monitor/internal/config"
-	"github.com/jankremlacek/monitor/internal/db"
-	"github.com/jankremlacek/monitor/internal/notify"
+	"github.com/jandubois/monitor/internal/config"
+	"github.com/jandubois/monitor/internal/db"
+	"github.com/jandubois/monitor/internal/notify"
 )
 
 // Server is the web backend.

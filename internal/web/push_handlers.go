@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/jankremlacek/monitor/internal/notify"
-	"github.com/jankremlacek/monitor/internal/probe"
+	"github.com/jandubois/monitor/internal/notify"
+	"github.com/jandubois/monitor/internal/probe"
 )
 
 // RegisterRequest is sent by watchers on startup.

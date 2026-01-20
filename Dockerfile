@@ -15,7 +15,7 @@ RUN go mod download
 COPY . .
 COPY --from=frontend-builder /app/web/frontend/dist ./internal/web/frontend/dist
 ARG VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/jankremlacek/monitor/cmd.Version=${VERSION}" -o monitor .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/jandubois/monitor/cmd.Version=${VERSION}" -o monitor .
 
 # Final image
 FROM alpine:3.21

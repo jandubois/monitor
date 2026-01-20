@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jankremlacek/monitor/internal/config"
+	"github.com/jandubois/monitor/internal/config"
 )
 
 const Version = "1.0.0"

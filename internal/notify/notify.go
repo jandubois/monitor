@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jankremlacek/monitor/internal/probe"
+	"github.com/jandubois/monitor/internal/probe"
 )
 
 // Channel is a notification channel.

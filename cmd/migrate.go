@@ -3,7 +3,7 @@ package cmd
 import (
 	"log/slog"
 
-	"github.com/jankremlacek/monitor/internal/db"
+	"github.com/jandubois/monitor/internal/db"
 	"github.com/spf13/cobra"
 )
 

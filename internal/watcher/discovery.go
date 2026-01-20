@@ -11,8 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/jankremlacek/monitor/internal/probe"
-	"github.com/jankremlacek/monitor/internal/probes"
+	"github.com/jandubois/monitor/internal/probe"
+	"github.com/jandubois/monitor/internal/probes"
 )
 
 // Discovery scans for probes and describes them.

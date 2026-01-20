@@ -1,4 +1,4 @@
-module github.com/jankremlacek/monitor
+module github.com/jandubois/monitor
 
 go 1.24.0
 

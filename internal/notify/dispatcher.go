@@ -7,7 +7,7 @@ import (
 	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/jankremlacek/monitor/internal/probe"
+	"github.com/jandubois/monitor/internal/probe"
 )
 
 // Dispatcher manages notification channels and sends notifications.
