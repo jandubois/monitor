@@ -57,12 +57,12 @@ When executed, probes return JSON with status, message, and optional metrics:
 $ ./probes/disk-space/disk-space --path / --min_free_gb 10
 {
   "status": "ok",
-  "message": "87 GB free on / (89%)",
-  "metrics": {"free_bytes": 93841408000, "free_percent": 89.4}
+  "message": "202.6GB free on / (89.4%)",
+  "metrics": {"free_bytes": 217538662400, "free_percent": 89.4}
 }
 ```
 
-**Available probes:** disk-space, command
+**Available probes:** disk-space, command, git-status, github, debug
 
 **Adding a probe:** Create an executable in `probes/<name>/` that implements `--describe` and returns JSON results. Restart the watcher to discover it.
 
@@ -72,9 +72,12 @@ $ ./probes/disk-space/disk-space --path / --min_free_gb 10
 ./monitor watcher \
   --name macbook \
   --push-url https://monitor.example.com \
+  --callback-url http://macbook.local:8081 \
   --auth-token $TOKEN \
   --probes-dir ./probes
 ```
+
+The `--callback-url` enables the web server to trigger probe runs directly. Without it, triggered runs use polling (slower).
 
 ## API
 
@@ -95,24 +98,31 @@ See [docs/PLAN.md](docs/PLAN.md) for complete API reference.
 
 ```bash
 # Run locally (requires Go 1.24+)
-go run ./cmd/monitor web --database-url postgres://...
-go run ./cmd/monitor watcher --name dev --push-url http://localhost:8080
+go run . web --database-url postgres://...
+go run . watcher --name dev --push-url http://localhost:8080
 
 # Build probes
 cd probes/disk-space && go build -o disk-space .
+
+# Run tests
+go test ./...                           # Go tests
+cd web/frontend && npm run test:run     # Frontend tests
+npm run test:e2e                        # E2E tests (requires running server)
 ```
 
 ## Project Structure
 
 ```
-cmd/monitor/         CLI entry point (web, watcher, migrate commands)
+cmd/                 CLI commands (web, watcher, install)
 internal/
   web/               Web service (handlers, push API, server)
   watcher/           Watcher (scheduler, executor, HTTP client)
   db/                Database connection and migrations
   notify/            Notification dispatcher
   probe/             Probe types and result structures
-probes/              Probe executables (disk-space, command)
+  probes/            Built-in probes (disk-space, command, etc.)
+probes/              External probe executables
 web/frontend/        React SPA (TypeScript, Tailwind)
+e2e/                 Playwright end-to-end tests
 docs/PLAN.md         Full architecture specification
 ```

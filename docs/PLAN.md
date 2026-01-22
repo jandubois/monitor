@@ -64,8 +64,11 @@ Single binary with two operational modes:
 - Timeout enforcement: SIGTERM, then SIGKILL after grace period
 - Pushes results to web service via HTTP
 - Sends heartbeat to web service periodically
-- Minimal local HTTP API (optional, for debugging):
-  - `GET /health` - Liveness check
+- Local HTTP API for control and debugging:
+  - `GET /health` - Liveness check (public)
+  - `POST /reload` - Reload probe configs from web service (requires auth)
+  - `POST /trigger/{id}` - Trigger immediate probe run (requires auth)
+  - `POST /discover` - Re-discover probes and re-register (requires auth)
 
 **`monitor web`** - Central web service
 - REST API for SPA (CRUD operations)
@@ -85,6 +88,8 @@ watchers (
   name TEXT UNIQUE NOT NULL,         -- e.g., "nas", "macbook"
   last_seen_at TIMESTAMPTZ,
   version TEXT,                      -- monitor binary version
+  callback_url TEXT,                 -- URL for direct trigger (optional)
+  paused BOOLEAN DEFAULT false,      -- suppress notifications when true
   registered_at TIMESTAMPTZ DEFAULT NOW()
 )
 
@@ -301,6 +306,7 @@ GET    /api/push/configs/:watcher    # Watcher fetches its assigned configs
 {
   "name": "nas",
   "version": "1.0.0",
+  "callback_url": "http://nas.local:8081",
   "probe_types": [
     {
       "name": "disk-space",
@@ -312,6 +318,8 @@ GET    /api/push/configs/:watcher    # Watcher fetches its assigned configs
   ]
 }
 ```
+
+The `callback_url` enables direct probe triggering. The web service calls `POST {callback_url}/trigger/{id}` with the auth token when a user requests an immediate run.
 
 **Result submission** (`POST /api/push/result`):
 ```json
@@ -414,7 +422,9 @@ monitor watcher --name macbook \
 ## Authentication
 
 Token-based auth:
-- Shared token for watchers and web UI (via `Authorization: Bearer <token>`)
+- Shared token for watchers, web UI, and watcher API (via `Authorization: Bearer <token>`)
+- Web service requires auth for all endpoints except `/api/health`
+- Watcher API requires auth for `/reload`, `/trigger/{id}`, `/discover`; `/health` is public
 - Future: multiple tokens with visibility filters (e.g., hide personal probes for demo)
 
 ## Grouping and Filtering
