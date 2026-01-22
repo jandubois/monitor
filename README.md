@@ -68,6 +68,18 @@ $ ./probes/disk-space/disk-space --path / --min_free_gb 10
 
 ## Running a Remote Watcher
 
+**On macOS (recommended):** Use the install command to set up a LaunchAgent:
+
+```bash
+./monitor install \
+  --push-url https://monitor.example.com \
+  --auth-token $TOKEN
+```
+
+This auto-constructs the callback URL from hostname (e.g., `http://macbook.local:8081`). Use `--callback-url` to override if `.local` doesn't resolve on your network.
+
+**Manual execution:**
+
 ```bash
 ./monitor watcher \
   --name macbook \
@@ -77,7 +89,7 @@ $ ./probes/disk-space/disk-space --path / --min_free_gb 10
   --probes-dir ./probes
 ```
 
-The `--callback-url` enables the web server to trigger probe runs directly. Without it, triggered runs use polling (slower).
+The `--callback-url` enables direct probe triggering. Without it, triggered runs use polling (slower).
 
 ## API
 
