@@ -3,6 +3,7 @@ module github.com/jandubois/monitor
 go 1.24.0
 
 require (
+	github.com/docker/go-units v0.5.0
 	github.com/golang-migrate/migrate/v4 v4.18.1
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/spf13/cobra v1.10.2

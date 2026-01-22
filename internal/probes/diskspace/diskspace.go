@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"syscall"
 
+	units "github.com/docker/go-units"
 	"github.com/jandubois/monitor/internal/probe"
 )
 
@@ -68,7 +69,7 @@ func Run(path string, minFreeGB, minFreePercent float64) *probe.Result {
 
 	if minFreeGB > 0 && freeGB < minFreeGB {
 		status = probe.StatusCritical
-		reasons = append(reasons, fmt.Sprintf("%.1f GB free < %.1f GB minimum", freeGB, minFreeGB))
+		reasons = append(reasons, fmt.Sprintf("%s free < %.0f GB minimum", units.HumanSize(float64(freeBytes)), minFreeGB))
 	}
 
 	if minFreePercent > 0 && freePercent < minFreePercent {
@@ -76,7 +77,7 @@ func Run(path string, minFreeGB, minFreePercent float64) *probe.Result {
 		reasons = append(reasons, fmt.Sprintf("%.1f%% free < %.1f%% minimum", freePercent, minFreePercent))
 	}
 
-	message := fmt.Sprintf("%.1f GB free on %s (%.1f%%)", freeGB, path, freePercent)
+	message := fmt.Sprintf("%s free on %s (%.1f%%)", units.HumanSize(float64(freeBytes)), path, freePercent)
 	if len(reasons) > 0 {
 		message = reasons[0]
 		if len(reasons) > 1 {
