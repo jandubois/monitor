@@ -77,6 +77,19 @@ class ApiClient {
     return this.request(`/watchers/${id}`);
   }
 
+  async deleteWatcher(id: number): Promise<void> {
+    return this.request(`/watchers/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async setWatcherPaused(id: number, paused: boolean): Promise<void> {
+    return this.request(`/watchers/${id}/paused`, {
+      method: 'PUT',
+      body: JSON.stringify({ paused }),
+    });
+  }
+
   // Probe Types
   async getProbeTypes(watcherId?: number): Promise<ProbeType[]> {
     const query = watcherId ? `?watcher=${watcherId}` : '';

@@ -53,6 +53,21 @@ export function Config({ onBack }: ConfigProps) {
     },
   });
 
+  const deleteWatcherMutation = useMutation({
+    mutationFn: (id: number) => api.deleteWatcher(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watchers'] });
+      queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+    },
+  });
+
+  const pauseWatcherMutation = useMutation({
+    mutationFn: ({ id, paused }: { id: number; paused: boolean }) => api.setWatcherPaused(id, paused),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watchers'] });
+    },
+  });
+
   return (
     <div className="p-6">
       <button
@@ -79,9 +94,33 @@ export function Config({ onBack }: ConfigProps) {
                   <span className={`ml-2 text-xs px-2 py-0.5 rounded ${w.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                     {w.healthy ? 'healthy' : 'unhealthy'}
                   </span>
+                  {w.paused && (
+                    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">
+                      paused
+                    </span>
+                  )}
+                  <span className="ml-3 text-sm text-gray-500">
+                    {w.probe_type_count} types, {w.config_count} configs
+                  </span>
                 </div>
-                <div className="text-sm text-gray-500">
-                  {w.probe_type_count} types, {w.config_count} configs
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => pauseWatcherMutation.mutate({ id: w.id, paused: !w.paused })}
+                    className={`text-sm px-2 py-1 rounded ${w.paused ? 'text-green-600 hover:text-green-800' : 'text-yellow-600 hover:text-yellow-800'}`}
+                    title={w.paused ? 'Resume notifications' : 'Pause notifications'}
+                  >
+                    {w.paused ? 'Resume' : 'Pause'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Delete watcher "${w.name}" and all its probe data?`)) {
+                        deleteWatcherMutation.mutate(w.id);
+                      }
+                    }}
+                    className="text-red-600 hover:text-red-800 text-sm"
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}

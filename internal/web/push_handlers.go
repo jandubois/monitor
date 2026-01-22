@@ -242,18 +242,27 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) checkStatusChangeAndNotify(ctx context.Context, configID int, newStatus probe.Status, message string) {
-	// Get probe config details and previous status
+	// Get probe config details, watcher paused status, and previous status
 	var probeName string
 	var notificationChannels []int
 	var prevStatus *string
+	var watcherPaused bool
 
 	err := s.db.Pool().QueryRow(ctx, `
 		SELECT pc.name, pc.notification_channels,
-		       (SELECT status FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1 OFFSET 1)
-		FROM probe_configs pc WHERE pc.id = $1
-	`, configID).Scan(&probeName, &notificationChannels, &prevStatus)
+		       (SELECT status FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1 OFFSET 1),
+		       COALESCE(w.paused, false)
+		FROM probe_configs pc
+		LEFT JOIN watchers w ON w.id = pc.watcher_id
+		WHERE pc.id = $1
+	`, configID).Scan(&probeName, &notificationChannels, &prevStatus, &watcherPaused)
 	if err != nil {
 		slog.Error("failed to get probe config for notification", "config_id", configID, "error", err)
+		return
+	}
+
+	// Skip notifications if watcher is paused
+	if watcherPaused {
 		return
 	}
 

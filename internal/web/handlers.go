@@ -164,7 +164,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	rows, err := s.db.Pool().Query(ctx, `
-		SELECT w.id, w.name, w.last_seen_at, w.version, w.registered_at,
+		SELECT w.id, w.name, w.last_seen_at, w.version, w.registered_at, w.paused,
 		       (SELECT COUNT(*) FROM watcher_probe_types WHERE watcher_id = w.id) as probe_type_count,
 		       (SELECT COUNT(*) FROM probe_configs WHERE watcher_id = w.id) as config_count
 		FROM watchers w
@@ -183,9 +183,10 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 		var lastSeen *time.Time
 		var version *string
 		var registeredAt time.Time
+		var paused bool
 		var probeTypeCount, configCount int
 
-		if err := rows.Scan(&id, &name, &lastSeen, &version, &registeredAt, &probeTypeCount, &configCount); err != nil {
+		if err := rows.Scan(&id, &name, &lastSeen, &version, &registeredAt, &paused, &probeTypeCount, &configCount); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -196,6 +197,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 			"id":               id,
 			"name":             name,
 			"healthy":          healthy,
+			"paused":           paused,
 			"registered_at":    registeredAt,
 			"probe_type_count": probeTypeCount,
 			"config_count":     configCount,
@@ -222,11 +224,12 @@ func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
 	var lastSeen *time.Time
 	var version *string
 	var registeredAt time.Time
+	var paused bool
 
 	err := s.db.Pool().QueryRow(ctx, `
-		SELECT id, name, last_seen_at, version, registered_at
+		SELECT id, name, last_seen_at, version, registered_at, paused
 		FROM watchers WHERE id = $1
-	`, id).Scan(&id, &name, &lastSeen, &version, &registeredAt)
+	`, id).Scan(&id, &name, &lastSeen, &version, &registeredAt, &paused)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -272,6 +275,7 @@ func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
 		"id":            id,
 		"name":          name,
 		"healthy":       healthy,
+		"paused":        paused,
 		"registered_at": registeredAt,
 		"probe_types":   probeTypes,
 	}
@@ -284,6 +288,53 @@ func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(watcher)
+}
+
+func (s *Server) handleDeleteWatcher(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, _ := strconv.Atoi(r.PathValue("id"))
+
+	result, err := s.db.Pool().Exec(ctx, `DELETE FROM watchers WHERE id = $1`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		http.Error(w, "watcher not found", http.StatusNotFound)
+		return
+	}
+
+	slog.Info("watcher deleted", "id", id)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleSetWatcherPaused(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, _ := strconv.Atoi(r.PathValue("id"))
+
+	var req struct {
+		Paused bool `json:"paused"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	result, err := s.db.Pool().Exec(ctx, `UPDATE watchers SET paused = $1 WHERE id = $2`, req.Paused, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if result.RowsAffected() == 0 {
+		http.Error(w, "watcher not found", http.StatusNotFound)
+		return
+	}
+
+	slog.Info("watcher paused state changed", "id", id, "paused", req.Paused)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"paused": req.Paused})
 }
 
 func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) {

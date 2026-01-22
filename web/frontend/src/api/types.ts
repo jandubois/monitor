@@ -4,6 +4,7 @@ export interface Watcher {
   id: number;
   name: string;
   healthy: boolean;
+  paused: boolean;
   last_seen_at?: string;
   version?: string;
   registered_at: string;

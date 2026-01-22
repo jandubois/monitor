@@ -78,6 +78,8 @@ func (s *Server) routes() http.Handler {
 	// Watchers API
 	mux.Handle("GET /api/watchers", s.requireAuth(http.HandlerFunc(s.handleListWatchers)))
 	mux.Handle("GET /api/watchers/{id}", s.requireAuth(http.HandlerFunc(s.handleGetWatcher)))
+	mux.Handle("DELETE /api/watchers/{id}", s.requireAuth(http.HandlerFunc(s.handleDeleteWatcher)))
+	mux.Handle("PUT /api/watchers/{id}/paused", s.requireAuth(http.HandlerFunc(s.handleSetWatcherPaused)))
 
 	// API routes (with auth)
 	mux.Handle("GET /api/status", s.requireAuth(http.HandlerFunc(s.handleStatus)))
