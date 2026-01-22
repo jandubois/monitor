@@ -85,7 +85,7 @@ func init() {
 	installCmd.Flags().String("name", "", "Unique watcher name (defaults to hostname)")
 	installCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
 	installCmd.Flags().Int("api-port", 8081, "Port for watcher API")
-	installCmd.Flags().String("callback-url", "", "Callback URL override (default: http://<name>.local:<api-port>)")
+	installCmd.Flags().String("callback-url", "", "Callback URL override (default: http://<hostname>:<api-port>)")
 	installCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env var)")
 }
 
@@ -100,14 +100,20 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	callbackURL, _ := cmd.Flags().GetString("callback-url")
 	authToken, _ := cmd.Flags().GetString("auth-token")
 
-	// Default name to hostname
+	// Get full hostname for callback URL, short hostname for watcher name
+	fullHostname, err := os.Hostname()
+	if err != nil {
+		fullHostname = "localhost"
+	}
+
+	// Default name to short hostname (without domain)
 	if name == "" {
 		name = getShortHostname()
 	}
 
-	// Construct callback URL from hostname and port if not explicitly set
+	// Construct callback URL from full hostname and port if not explicitly set
 	if callbackURL == "" {
-		callbackURL = fmt.Sprintf("http://%s.local:%d", name, apiPort)
+		callbackURL = fmt.Sprintf("http://%s:%d", fullHostname, apiPort)
 	}
 
 	// Allow auth token from environment

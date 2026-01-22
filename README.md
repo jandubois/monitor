@@ -76,7 +76,7 @@ $ ./probes/disk-space/disk-space --path / --min_free_gb 10
   --auth-token $TOKEN
 ```
 
-This auto-constructs the callback URL from hostname (e.g., `http://macbook.local:8081`). Use `--callback-url` to override if `.local` doesn't resolve on your network.
+This auto-constructs the callback URL from the system hostname and API port. Use `--callback-url` to override if needed.
 
 **Manual execution:**
 
