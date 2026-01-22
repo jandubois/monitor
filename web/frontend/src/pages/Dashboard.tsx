@@ -99,14 +99,15 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
     setRunningProbes(prev => new Set(prev).add(id));
 
     const pollForResult = async () => {
+      const startTime = Date.now();
       for (let i = 0; i < 30; i++) {
         await new Promise(r => setTimeout(r, 1000));
-        await queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+        await queryClient.refetchQueries({ queryKey: ['probeConfigs'] });
         const configs = queryClient.getQueryData<ProbeConfig[]>(['probeConfigs']);
         const config = configs?.find(c => c.id === id);
         if (config?.last_executed_at) {
           const lastRun = new Date(config.last_executed_at).getTime();
-          if (Date.now() - lastRun < 5000) {
+          if (lastRun > startTime) {
             setRunningProbes(prev => {
               const next = new Set(prev);
               next.delete(id);
