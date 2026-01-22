@@ -23,3 +23,7 @@ web/frontend/dist/
 /probes/command/command
 /internal/web/frontend/dist/*
 !/internal/web/frontend/dist/.gitkeep
+
+# Playwright
+/test-results/
+/playwright-report/
