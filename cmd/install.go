@@ -29,6 +29,8 @@ var launchAgentPlist = `<?xml version="1.0" encoding="UTF-8"?>
         <string>{{.PushURL}}</string>
         <string>--callback-url</string>
         <string>{{.CallbackURL}}</string>
+        <string>--api-port</string>
+        <string>{{.APIPort}}</string>
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -53,6 +55,7 @@ type plistData struct {
 	Name        string
 	PushURL     string
 	CallbackURL string
+	APIPort     int
 	AuthToken   string
 	LogDir      string
 }
@@ -81,7 +84,7 @@ func init() {
 
 	installCmd.Flags().String("name", "", "Unique watcher name (defaults to hostname)")
 	installCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
-	installCmd.Flags().String("callback-url", "http://localhost:8081", "URL where web service can reach this watcher")
+	installCmd.Flags().Int("api-port", 8081, "Port for watcher API (used for callback URL)")
 	installCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env var)")
 }
 
@@ -92,13 +95,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	name, _ := cmd.Flags().GetString("name")
 	pushURL, _ := cmd.Flags().GetString("push-url")
-	callbackURL, _ := cmd.Flags().GetString("callback-url")
+	apiPort, _ := cmd.Flags().GetInt("api-port")
 	authToken, _ := cmd.Flags().GetString("auth-token")
 
 	// Default name to hostname
 	if name == "" {
 		name = getShortHostname()
 	}
+
+	// Construct callback URL from hostname and port
+	callbackURL := fmt.Sprintf("http://%s.local:%d", name, apiPort)
 
 	// Allow auth token from environment
 	if authToken == "" {
@@ -149,6 +155,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		Name:        name,
 		PushURL:     pushURL,
 		CallbackURL: callbackURL,
+		APIPort:     apiPort,
 		AuthToken:   authToken,
 		LogDir:      logDir,
 	}
