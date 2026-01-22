@@ -137,21 +137,23 @@ func (w *Watcher) sendHeartbeat(ctx context.Context) {
 func (w *Watcher) createAPIServer() *http.Server {
 	mux := http.NewServeMux()
 
+	// Health endpoint is public
 	mux.HandleFunc("GET /health", func(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusOK)
 		rw.Write([]byte(`{"status":"ok"}`))
 	})
 
-	mux.HandleFunc("POST /reload", func(rw http.ResponseWriter, r *http.Request) {
+	// Protected endpoints require authentication
+	mux.HandleFunc("POST /reload", w.requireAuth(func(rw http.ResponseWriter, r *http.Request) {
 		if err := w.scheduler.Reload(r.Context()); err != nil {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		rw.WriteHeader(http.StatusOK)
 		rw.Write([]byte(`{"status":"reloaded"}`))
-	})
+	}))
 
-	mux.HandleFunc("POST /trigger/{id}", func(rw http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /trigger/{id}", w.requireAuth(func(rw http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
 		if err := w.scheduler.TriggerImmediate(r.Context(), id); err != nil {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -159,9 +161,9 @@ func (w *Watcher) createAPIServer() *http.Server {
 		}
 		rw.WriteHeader(http.StatusOK)
 		rw.Write([]byte(`{"status":"triggered"}`))
-	})
+	}))
 
-	mux.HandleFunc("POST /discover", func(rw http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /discover", w.requireAuth(func(rw http.ResponseWriter, r *http.Request) {
 		probeTypes, err := w.discovery.DiscoverAll(r.Context())
 		if err != nil {
 			http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -181,10 +183,35 @@ func (w *Watcher) createAPIServer() *http.Server {
 
 		rw.WriteHeader(http.StatusOK)
 		fmt.Fprintf(rw, `{"status":"discovered","count":%d}`, len(probeTypes))
-	})
+	}))
 
 	return &http.Server{
 		Addr:    fmt.Sprintf(":%d", w.config.APIPort),
 		Handler: mux,
+	}
+}
+
+// requireAuth wraps a handler to require Bearer token authentication.
+func (w *Watcher) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(rw http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			http.Error(rw, "authorization required", http.StatusUnauthorized)
+			return
+		}
+
+		const prefix = "Bearer "
+		if len(auth) < len(prefix) || auth[:len(prefix)] != prefix {
+			http.Error(rw, "invalid authorization header", http.StatusUnauthorized)
+			return
+		}
+
+		token := auth[len(prefix):]
+		if token != w.config.AuthToken {
+			http.Error(rw, "invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		next(rw, r)
 	}
 }

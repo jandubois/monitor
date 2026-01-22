@@ -639,6 +639,7 @@ func (s *Server) handleRunProbeConfig(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		req.Header.Set("Authorization", "Bearer "+s.config.AuthToken)
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -702,6 +703,7 @@ func (s *Server) handleSetProbeEnabled(w http.ResponseWriter, r *http.Request) {
 		if callbackURL != nil && *callbackURL != "" {
 			triggerURL := fmt.Sprintf("%s/trigger/%d", *callbackURL, id)
 			triggerReq, _ := http.NewRequestWithContext(ctx, "POST", triggerURL, nil)
+			triggerReq.Header.Set("Authorization", "Bearer "+s.config.AuthToken)
 			if resp, err := http.DefaultClient.Do(triggerReq); err == nil {
 				resp.Body.Close()
 			}
