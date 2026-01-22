@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"text/template"
 
 	"github.com/spf13/cobra"
@@ -100,12 +101,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	callbackURL, _ := cmd.Flags().GetString("callback-url")
 	authToken, _ := cmd.Flags().GetString("auth-token")
 
-	// Get full hostname for callback URL, short hostname for watcher name
-	fullHostname, err := os.Hostname()
-	if err != nil {
-		fullHostname = "localhost"
-	}
-
 	// Default name to short hostname (without domain)
 	if name == "" {
 		name = getShortHostname()
@@ -113,7 +108,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	// Construct callback URL from full hostname and port if not explicitly set
 	if callbackURL == "" {
-		callbackURL = fmt.Sprintf("http://%s:%d", fullHostname, apiPort)
+		callbackURL = fmt.Sprintf("http://%s:%d", getFullHostname(), apiPort)
 	}
 
 	// Allow auth token from environment
@@ -225,4 +220,56 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Uninstalled %s\n", launchAgentLabel)
 	return nil
+}
+
+// getFullHostname returns the hostname with domain suffix.
+// Uses DNS search domain from scutil (macOS) or /etc/resolv.conf (Linux).
+func getFullHostname() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "localhost"
+	}
+
+	// If hostname already has a domain, use it as-is
+	if strings.Contains(hostname, ".") {
+		return hostname
+	}
+
+	// Try to get search domain
+	if domain := getSearchDomain(); domain != "" {
+		return hostname + "." + domain
+	}
+
+	// Fallback to .local for mDNS
+	return hostname + ".local"
+}
+
+// getSearchDomain returns the first DNS search domain.
+func getSearchDomain() string {
+	// macOS: use scutil
+	if runtime.GOOS == "darwin" {
+		out, err := exec.Command("scutil", "--dns").Output()
+		if err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				line = strings.TrimSpace(line)
+				if strings.HasPrefix(line, "search domain[0] :") {
+					return strings.TrimSpace(strings.TrimPrefix(line, "search domain[0] :"))
+				}
+			}
+		}
+		return ""
+	}
+
+	// Linux: read /etc/resolv.conf
+	data, err := os.ReadFile("/etc/resolv.conf")
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && (fields[0] == "search" || fields[0] == "domain") {
+			return fields[1]
+		}
+	}
+	return ""
 }
