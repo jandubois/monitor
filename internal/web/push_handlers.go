@@ -17,6 +17,7 @@ import (
 type RegisterRequest struct {
 	Name        string              `json:"name"`
 	Version     string              `json:"version"`
+	Token       string              `json:"token"`
 	CallbackURL string              `json:"callback_url,omitempty"`
 	ProbeTypes  []RegisterProbeType `json:"probe_types"`
 }
@@ -86,19 +87,27 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
 	}
+	if req.Token == "" {
+		http.Error(w, "token is required", http.StatusBadRequest)
+		return
+	}
 
 	now := time.Now().UTC().Format(db.SQLiteTimeFormat)
 
-	// Upsert watcher using SQLite's INSERT OR REPLACE pattern
-	// First try to get existing watcher
+	// Check for existing watcher
 	var watcherID int
-	err := s.db.DB().QueryRowContext(ctx, `SELECT id FROM watchers WHERE name = ?`, req.Name).Scan(&watcherID)
+	var existingToken *string
+	var approved int
+	err := s.db.DB().QueryRowContext(ctx,
+		`SELECT id, token, approved FROM watchers WHERE name = ?`, req.Name,
+	).Scan(&watcherID, &existingToken, &approved)
+
 	if err != nil {
-		// Insert new watcher
+		// Insert new watcher (paused=1, approved=0)
 		result, err := s.db.DB().ExecContext(ctx, `
-			INSERT INTO watchers (name, version, callback_url, last_seen_at, registered_at)
-			VALUES (?, ?, ?, ?, ?)
-		`, req.Name, req.Version, req.CallbackURL, now, now)
+			INSERT INTO watchers (name, version, token, callback_url, last_seen_at, registered_at, paused, approved)
+			VALUES (?, ?, ?, ?, ?, ?, 1, 0)
+		`, req.Name, req.Version, req.Token, req.CallbackURL, now, now)
 		if err != nil {
 			slog.Error("failed to register watcher", "name", req.Name, "error", err)
 			http.Error(w, "failed to register watcher", http.StatusInternalServerError)
@@ -106,12 +115,21 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		id, _ := result.LastInsertId()
 		watcherID = int(id)
+		approved = 0
+		slog.Info("new watcher registered (pending approval)", "name", req.Name)
 	} else {
-		// Update existing watcher
+		// Existing watcher - verify token matches
+		if existingToken != nil && *existingToken != req.Token {
+			slog.Warn("watcher token mismatch", "name", req.Name)
+			http.Error(w, "token mismatch", http.StatusForbidden)
+			return
+		}
+
+		// Update existing watcher (preserve approved status, update token if not set)
 		_, err = s.db.DB().ExecContext(ctx, `
-			UPDATE watchers SET version = ?, callback_url = ?, last_seen_at = ?
+			UPDATE watchers SET version = ?, token = ?, callback_url = ?, last_seen_at = ?
 			WHERE id = ?
-		`, req.Version, req.CallbackURL, now, watcherID)
+		`, req.Version, req.Token, req.CallbackURL, now, watcherID)
 		if err != nil {
 			slog.Error("failed to update watcher", "name", req.Name, "error", err)
 			http.Error(w, "failed to update watcher", http.StatusInternalServerError)
@@ -170,17 +188,25 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	slog.Info("watcher registered", "name", req.Name, "version", req.Version, "probe_types", len(req.ProbeTypes))
+	slog.Info("watcher registered", "name", req.Name, "version", req.Version, "probe_types", len(req.ProbeTypes), "approved", approved != 0)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"watcher_id":        watcherID,
 		"registered_probes": len(req.ProbeTypes),
+		"approved":          approved != 0,
 	})
 }
 
 func (s *Server) handlePushHeartbeat(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+
+	// Get watcher info from context (set by requireWatcherAuth middleware)
+	watcherID, ok := WatcherIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "watcher not authenticated", http.StatusUnauthorized)
+		return
+	}
 
 	var req HeartbeatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -188,23 +214,13 @@ func (s *Server) handlePushHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Name == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
-		return
-	}
-
 	now := time.Now().UTC().Format(db.SQLiteTimeFormat)
 
-	result, err := s.db.DB().ExecContext(ctx, `
-		UPDATE watchers SET last_seen_at = ?, version = ? WHERE name = ?
-	`, now, req.Version, req.Name)
+	_, err := s.db.DB().ExecContext(ctx, `
+		UPDATE watchers SET last_seen_at = ?, version = ? WHERE id = ?
+	`, now, req.Version, watcherID)
 	if err != nil {
 		http.Error(w, "failed to update heartbeat", http.StatusInternalServerError)
-		return
-	}
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		http.Error(w, "watcher not registered", http.StatusNotFound)
 		return
 	}
 
@@ -215,17 +231,16 @@ func (s *Server) handlePushHeartbeat(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var req ResultRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	// Get watcher info from context (set by requireWatcherAuth middleware)
+	watcherID, ok := WatcherIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "watcher not authenticated", http.StatusUnauthorized)
 		return
 	}
 
-	// Get watcher ID
-	var watcherID int
-	err := s.db.DB().QueryRowContext(ctx, `SELECT id FROM watchers WHERE name = ?`, req.Watcher).Scan(&watcherID)
-	if err != nil {
-		http.Error(w, "watcher not found", http.StatusNotFound)
+	var req ResultRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -257,7 +272,7 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 		nextRunAtStr = &s
 	}
 
-	_, err = s.db.DB().ExecContext(ctx, `
+	_, err := s.db.DB().ExecContext(ctx, `
 		INSERT INTO probe_results (probe_config_id, watcher_id, status, message, metrics, data, duration_ms, next_run_at, scheduled_at, executed_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, req.ProbeConfigID, watcherID, req.Status, req.Message, string(metricsJSON), string(dataJSON), req.DurationMs, nextRunAtStr, req.ScheduledAt.UTC().Format(db.SQLiteTimeFormat), req.ExecutedAt.UTC().Format(db.SQLiteTimeFormat))
@@ -269,7 +284,7 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 
 	// Update next_run_at on probe_config
 	if nextRunAtStr != nil {
-		_, err = s.db.DB().ExecContext(ctx, `
+		_, err := s.db.DB().ExecContext(ctx, `
 			UPDATE probe_configs SET next_run_at = ? WHERE id = ?
 		`, nextRunAtStr, req.ProbeConfigID)
 		if err != nil {
@@ -416,13 +431,19 @@ func (s *Server) handlePushAlert(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handlePushGetConfigs(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	watcherName := r.PathValue("watcher")
 
-	// Get watcher ID
-	var watcherID int
-	err := s.db.DB().QueryRowContext(ctx, `SELECT id FROM watchers WHERE name = ?`, watcherName).Scan(&watcherID)
-	if err != nil {
-		http.Error(w, "watcher not found", http.StatusNotFound)
+	// Get watcher info from context (set by requireWatcherAuth middleware)
+	watcherID, ok := WatcherIDFromContext(ctx)
+	if !ok {
+		http.Error(w, "watcher not authenticated", http.StatusUnauthorized)
+		return
+	}
+
+	// Verify the requested watcher matches the authenticated watcher
+	watcherName := r.PathValue("watcher")
+	authWatcherName, _ := WatcherNameFromContext(ctx)
+	if watcherName != authWatcherName {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 

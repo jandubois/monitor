@@ -5,6 +5,7 @@ export interface Watcher {
   name: string;
   healthy: boolean;
   paused: boolean;
+  approved: boolean;
   last_seen_at?: string;
   version?: string;
   registered_at: string;

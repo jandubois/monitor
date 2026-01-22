@@ -35,6 +35,7 @@ func NewClient(baseURL, authToken string) *Client {
 type RegisterRequest struct {
 	Name        string              `json:"name"`
 	Version     string              `json:"version"`
+	Token       string              `json:"token"`
 	CallbackURL string              `json:"callback_url,omitempty"`
 	ProbeTypes  []RegisterProbeType `json:"probe_types"`
 }
@@ -51,8 +52,9 @@ type RegisterProbeType struct {
 
 // RegisterResponse is returned from registration.
 type RegisterResponse struct {
-	WatcherID        int `json:"watcher_id"`
-	RegisteredProbes int `json:"registered_probes"`
+	WatcherID        int  `json:"watcher_id"`
+	RegisteredProbes int  `json:"registered_probes"`
+	Approved         bool `json:"approved"`
 }
 
 // HeartbeatRequest is sent periodically.
@@ -90,9 +92,10 @@ type ProbeConfigResponse struct {
 }
 
 // Register registers the watcher and its probe types with the web service.
+// Registration uses the token in the request body rather than Authorization header.
 func (c *Client) Register(ctx context.Context, req *RegisterRequest) (*RegisterResponse, error) {
 	var resp RegisterResponse
-	if err := c.post(ctx, "/api/push/register", req, &resp); err != nil {
+	if err := c.postNoAuth(ctx, "/api/push/register", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -149,6 +152,14 @@ func (c *Client) postWithRetry(ctx context.Context, path string, body any, respo
 }
 
 func (c *Client) post(ctx context.Context, path string, body any, response any) error {
+	return c.doPost(ctx, path, body, response, true)
+}
+
+func (c *Client) postNoAuth(ctx context.Context, path string, body any, response any) error {
+	return c.doPost(ctx, path, body, response, false)
+}
+
+func (c *Client) doPost(ctx context.Context, path string, body any, response any, includeAuth bool) error {
 	data, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
@@ -159,7 +170,9 @@ func (c *Client) post(ctx context.Context, path string, body any, response any) 
 		return fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.authToken)
+	if includeAuth {
+		req.Header.Set("Authorization", "Bearer "+c.authToken)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

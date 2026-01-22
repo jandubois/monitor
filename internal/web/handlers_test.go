@@ -244,6 +244,90 @@ func TestRequireAuth(t *testing.T) {
 	}
 }
 
+func TestRequireWatcherAuth(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a test watcher with a token
+	_, err := server.db.DB().ExecContext(ctx, `
+		INSERT INTO watchers (name, token, approved, paused, registered_at)
+		VALUES ('test-watcher', 'watcher-secret-token', 1, 0, datetime('now'))
+	`)
+	if err != nil {
+		t.Fatalf("failed to create test watcher: %v", err)
+	}
+
+	// Create an unapproved watcher
+	_, err = server.db.DB().ExecContext(ctx, `
+		INSERT INTO watchers (name, token, approved, paused, registered_at)
+		VALUES ('unapproved-watcher', 'unapproved-token', 0, 1, datetime('now'))
+	`)
+	if err != nil {
+		t.Fatalf("failed to create unapproved watcher: %v", err)
+	}
+
+	handler := server.requireWatcherAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		watcherID, ok := WatcherIDFromContext(r.Context())
+		if !ok {
+			t.Error("expected watcher ID in context")
+		}
+		watcherName, ok := WatcherNameFromContext(r.Context())
+		if !ok {
+			t.Error("expected watcher name in context")
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("success: " + watcherName + " " + strconv.Itoa(watcherID)))
+	}))
+
+	tests := []struct {
+		name           string
+		authHeader     string
+		expectedStatus int
+	}{
+		{
+			name:           "no auth header",
+			authHeader:     "",
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name:           "invalid token",
+			authHeader:     "Bearer invalid-token",
+			expectedStatus: http.StatusUnauthorized,
+		},
+		{
+			name:           "unapproved watcher token",
+			authHeader:     "Bearer unapproved-token",
+			expectedStatus: http.StatusForbidden,
+		},
+		{
+			name:           "approved watcher token",
+			authHeader:     "Bearer watcher-secret-token",
+			expectedStatus: http.StatusOK,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", "/test", nil)
+			if tt.authHeader != "" {
+				req.Header.Set("Authorization", tt.authHeader)
+			}
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != tt.expectedStatus {
+				t.Errorf("expected status %d, got %d: %s", tt.expectedStatus, w.Code, w.Body.String())
+			}
+		})
+	}
+}
+
 func TestHandleResultStats(t *testing.T) {
 	server, cleanup := testServer(t)
 	if server == nil {

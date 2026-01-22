@@ -178,7 +178,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	rows, err := s.db.DB().QueryContext(ctx, `
-		SELECT w.id, w.name, w.last_seen_at, w.version, w.registered_at, w.paused,
+		SELECT w.id, w.name, w.last_seen_at, w.version, w.registered_at, w.paused, w.approved,
 		       (SELECT COUNT(*) FROM watcher_probe_types WHERE watcher_id = w.id) as probe_type_count,
 		       (SELECT COUNT(*) FROM probe_configs WHERE watcher_id = w.id) as config_count
 		FROM watchers w
@@ -197,10 +197,10 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 		var lastSeen db.NullTime
 		var version *string
 		var registeredAt db.NullTime
-		var paused int
+		var paused, approved int
 		var probeTypeCount, configCount int
 
-		if err := rows.Scan(&id, &name, &lastSeen, &version, &registeredAt, &paused, &probeTypeCount, &configCount); err != nil {
+		if err := rows.Scan(&id, &name, &lastSeen, &version, &registeredAt, &paused, &approved, &probeTypeCount, &configCount); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -212,6 +212,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 			"name":             name,
 			"healthy":          healthy,
 			"paused":           paused != 0,
+			"approved":         approved != 0,
 			"probe_type_count": probeTypeCount,
 			"config_count":     configCount,
 		}
@@ -240,12 +241,12 @@ func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
 	var lastSeen db.NullTime
 	var version *string
 	var registeredAt db.NullTime
-	var paused int
+	var paused, approved int
 
 	err := s.db.DB().QueryRowContext(ctx, `
-		SELECT id, name, last_seen_at, version, registered_at, paused
+		SELECT id, name, last_seen_at, version, registered_at, paused, approved
 		FROM watchers WHERE id = ?
-	`, id).Scan(&id, &name, &lastSeen, &version, &registeredAt, &paused)
+	`, id).Scan(&id, &name, &lastSeen, &version, &registeredAt, &paused, &approved)
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -292,6 +293,7 @@ func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
 		"name":        name,
 		"healthy":     healthy,
 		"paused":      paused != 0,
+		"approved":    approved != 0,
 		"probe_types": probeTypes,
 	}
 	if registeredAt.Valid {
@@ -345,7 +347,15 @@ func (s *Server) handleSetWatcherPaused(w http.ResponseWriter, r *http.Request) 
 		pausedInt = 1
 	}
 
-	result, err := s.db.DB().ExecContext(ctx, `UPDATE watchers SET paused = ? WHERE id = ?`, pausedInt, id)
+	// When unpausing, also approve the watcher
+	var result interface{ RowsAffected() (int64, error) }
+	var err error
+	if req.Paused {
+		result, err = s.db.DB().ExecContext(ctx, `UPDATE watchers SET paused = ? WHERE id = ?`, pausedInt, id)
+	} else {
+		// Unpause and approve
+		result, err = s.db.DB().ExecContext(ctx, `UPDATE watchers SET paused = ?, approved = 1 WHERE id = ?`, pausedInt, id)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -357,7 +367,11 @@ func (s *Server) handleSetWatcherPaused(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	slog.Info("watcher paused state changed", "id", id, "paused", req.Paused)
+	if req.Paused {
+		slog.Info("watcher paused", "id", id)
+	} else {
+		slog.Info("watcher approved and unpaused", "id", id)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]bool{"paused": req.Paused})
 }

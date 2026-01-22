@@ -94,7 +94,12 @@ export function Config({ onBack }: ConfigProps) {
                   <span className={`ml-2 text-xs px-2 py-0.5 rounded ${w.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                     {w.healthy ? 'healthy' : 'unhealthy'}
                   </span>
-                  {w.paused && (
+                  {!w.approved && (
+                    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">
+                      pending approval
+                    </span>
+                  )}
+                  {w.approved && w.paused && (
                     <span className="ml-2 text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">
                       paused
                     </span>
@@ -107,9 +112,9 @@ export function Config({ onBack }: ConfigProps) {
                   <button
                     onClick={() => pauseWatcherMutation.mutate({ id: w.id, paused: !w.paused })}
                     className={`text-sm px-2 py-1 rounded ${w.paused ? 'text-green-600 hover:text-green-800' : 'text-yellow-600 hover:text-yellow-800'}`}
-                    title={w.paused ? 'Resume notifications' : 'Pause notifications'}
+                    title={!w.approved ? 'Approve watcher' : (w.paused ? 'Resume notifications' : 'Pause notifications')}
                   >
-                    {w.paused ? 'Resume' : 'Pause'}
+                    {!w.approved ? 'Approve' : (w.paused ? 'Resume' : 'Pause')}
                   </button>
                   <button
                     onClick={() => {

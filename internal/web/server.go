@@ -68,12 +68,14 @@ func (s *Server) routes() http.Handler {
 	// Health check (no auth)
 	mux.HandleFunc("GET /api/health", s.handleHealth)
 
-	// Push API (used by watchers and external systems, with auth)
-	mux.Handle("POST /api/push/register", s.requireAuth(http.HandlerFunc(s.handlePushRegister)))
-	mux.Handle("POST /api/push/heartbeat", s.requireAuth(http.HandlerFunc(s.handlePushHeartbeat)))
-	mux.Handle("POST /api/push/result", s.requireAuth(http.HandlerFunc(s.handlePushResult)))
-	mux.Handle("POST /api/push/alert", s.requireAuth(http.HandlerFunc(s.handlePushAlert)))
-	mux.Handle("GET /api/push/configs/{watcher}", s.requireAuth(http.HandlerFunc(s.handlePushGetConfigs)))
+	// Push API (used by watchers)
+	// Registration is unauthenticated - watcher sends token in body
+	mux.HandleFunc("POST /api/push/register", s.handlePushRegister)
+	// Other push endpoints require watcher token authentication
+	mux.Handle("POST /api/push/heartbeat", s.requireWatcherAuth(http.HandlerFunc(s.handlePushHeartbeat)))
+	mux.Handle("POST /api/push/result", s.requireWatcherAuth(http.HandlerFunc(s.handlePushResult)))
+	mux.Handle("POST /api/push/alert", s.requireWatcherAuth(http.HandlerFunc(s.handlePushAlert)))
+	mux.Handle("GET /api/push/configs/{watcher}", s.requireWatcherAuth(http.HandlerFunc(s.handlePushGetConfigs)))
 
 	// Watchers API
 	mux.Handle("GET /api/watchers", s.requireAuth(http.HandlerFunc(s.handleListWatchers)))

@@ -58,6 +58,7 @@ func (w *Watcher) Run(ctx context.Context) error {
 	regReq := &RegisterRequest{
 		Name:        w.config.Name,
 		Version:     Version,
+		Token:       w.config.AuthToken,
 		CallbackURL: w.config.CallbackURL,
 		ProbeTypes:  probeTypes,
 	}
@@ -77,7 +78,11 @@ func (w *Watcher) Run(ctx context.Context) error {
 		case <-time.After(10 * time.Second):
 		}
 	}
-	slog.Info("registered with web service", "watcher_id", resp.WatcherID, "probe_types", resp.RegisteredProbes)
+	if resp.Approved {
+		slog.Info("registered with web service", "watcher_id", resp.WatcherID, "probe_types", resp.RegisteredProbes)
+	} else {
+		slog.Warn("registered with web service (pending approval)", "watcher_id", resp.WatcherID, "probe_types", resp.RegisteredProbes)
+	}
 
 	// Start heartbeat
 	go w.heartbeatLoop(ctx)

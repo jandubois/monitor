@@ -30,7 +30,6 @@ func init() {
 	watcherCmd.Flags().String("name", "", "Unique watcher name (defaults to hostname)")
 	watcherCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
 	watcherCmd.Flags().String("callback-url", "", "URL where web service can reach this watcher (for triggers)")
-	watcherCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env var)")
 	watcherCmd.Flags().String("probes-dir", "./probes", "Directory containing probe executables")
 	watcherCmd.Flags().Int("max-concurrent", 10, "Maximum concurrent probe executions")
 	watcherCmd.Flags().Int("api-port", 8081, "Port for local watcher API (health check, reload)")
@@ -52,7 +51,6 @@ func runWatcher(cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	pushURL, _ := cmd.Flags().GetString("push-url")
 	callbackURL, _ := cmd.Flags().GetString("callback-url")
-	authToken, _ := cmd.Flags().GetString("auth-token")
 	probesDir, _ := cmd.Flags().GetString("probes-dir")
 	maxConcurrent, _ := cmd.Flags().GetInt("max-concurrent")
 	apiPort, _ := cmd.Flags().GetInt("api-port")
@@ -62,13 +60,12 @@ func runWatcher(cmd *cobra.Command, args []string) error {
 		name = getShortHostname()
 	}
 
-	// Auth token from env if not provided via flag
-	if authToken == "" {
-		authToken = os.Getenv("AUTH_TOKEN")
+	// Load or create watcher token
+	authToken, err := watcher.LoadOrCreateToken(name)
+	if err != nil {
+		return fmt.Errorf("load or create token: %w", err)
 	}
-	if authToken == "" {
-		return fmt.Errorf("auth token required (use --auth-token or AUTH_TOKEN env var)")
-	}
+	slog.Debug("loaded watcher token", "name", name)
 
 	// Load configuration
 	cfg := &config.WatcherConfig{
