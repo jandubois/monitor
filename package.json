@@ -1,0 +1,28 @@
+{
+  "name": "monitor",
+  "version": "1.0.0",
+  "description": "Personal infrastructure monitoring system with self-describing probes and multi-watcher support.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jandubois/monitor.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jandubois/monitor/issues"
+  },
+  "homepage": "https://github.com/jandubois/monitor#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.57.0"
+  }
+}
