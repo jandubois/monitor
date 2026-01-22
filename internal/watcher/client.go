@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -102,9 +103,9 @@ func (c *Client) Heartbeat(ctx context.Context, req *HeartbeatRequest) error {
 	return c.post(ctx, "/api/push/heartbeat", req, nil)
 }
 
-// SendResult sends a probe result to the web service.
+// SendResult sends a probe result to the web service with retry on failure.
 func (c *Client) SendResult(ctx context.Context, req *ResultRequest) error {
-	return c.post(ctx, "/api/push/result", req, nil)
+	return c.postWithRetry(ctx, "/api/push/result", req, nil)
 }
 
 // GetConfigs fetches probe configs assigned to this watcher.
@@ -114,6 +115,37 @@ func (c *Client) GetConfigs(ctx context.Context, watcherName string) ([]ProbeCon
 		return nil, err
 	}
 	return configs, nil
+}
+
+// postWithRetry sends a POST request with exponential backoff retry.
+// Retries up to 5 times over ~30 seconds for transient network failures.
+func (c *Client) postWithRetry(ctx context.Context, path string, body any, response any) error {
+	var lastErr error
+	delays := []time.Duration{0, 1 * time.Second, 2 * time.Second, 5 * time.Second, 10 * time.Second}
+
+	for attempt, delay := range delays {
+		if delay > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		lastErr = c.post(ctx, path, body, response)
+		if lastErr == nil {
+			return nil
+		}
+
+		// Don't retry on context cancellation or client errors (4xx)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		slog.Warn("request failed, retrying", "path", path, "attempt", attempt+1, "error", lastErr)
+	}
+
+	return fmt.Errorf("request failed after 5 attempts: %w", lastErr)
 }
 
 func (c *Client) post(ctx context.Context, path string, body any, response any) error {
