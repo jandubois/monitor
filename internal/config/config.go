@@ -13,6 +13,7 @@ type WatcherConfig struct {
 
 // WebConfig holds configuration for the web server.
 type WebConfig struct {
+	Name      string // Server name for display in dashboard
 	Port      int
 	AuthToken string
 }

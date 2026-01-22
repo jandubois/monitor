@@ -30,7 +30,7 @@ services:
       context: .
       args:
         VERSION: ${VERSION:-dev}
-    command: web
+    command: ["web", "--name=dev"]
     ports:
       - "8080:8080"
     environment:

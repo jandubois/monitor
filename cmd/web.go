@@ -25,6 +25,7 @@ the frontend static files, and accepts push requests from watchers.`,
 func init() {
 	rootCmd.AddCommand(webCmd)
 
+	webCmd.Flags().String("name", "", "Server name for display (defaults to hostname)")
 	webCmd.Flags().Int("port", 8080, "Port to listen on")
 	webCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env)")
 }
@@ -43,8 +44,13 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	}()
 
 	databaseURL := getDatabaseURL(cmd)
+	name, _ := cmd.Flags().GetString("name")
 	port, _ := cmd.Flags().GetInt("port")
 	authToken, _ := cmd.Flags().GetString("auth-token")
+
+	if name == "" {
+		name = getShortHostname()
+	}
 
 	if authToken == "" {
 		authToken = os.Getenv("AUTH_TOKEN")
@@ -61,6 +67,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	defer database.Close()
 
 	cfg := &config.WebConfig{
+		Name:      name,
 		Port:      port,
 		AuthToken: authToken,
 	}
@@ -70,6 +77,6 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("web server initialization failed: %w", err)
 	}
 
-	slog.Info("starting web server", "port", port)
+	slog.Info("starting web server", "name", name, "port", port)
 	return server.Run(ctx)
 }

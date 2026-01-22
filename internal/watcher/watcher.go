@@ -53,16 +53,29 @@ func (w *Watcher) Run(ctx context.Context) error {
 		slog.Info("probe discovery complete", "count", len(probeTypes))
 	}
 
-	// Register with web service
+	// Register with web service (retry for up to 2 minutes to allow for
+	// macOS Local Network Privacy prompt)
 	regReq := &RegisterRequest{
 		Name:        w.config.Name,
 		Version:     Version,
 		CallbackURL: w.config.CallbackURL,
 		ProbeTypes:  probeTypes,
 	}
-	resp, err := w.client.Register(ctx, regReq)
-	if err != nil {
-		return fmt.Errorf("failed to register with web service: %w", err)
+	var resp *RegisterResponse
+	for attempt := 1; attempt <= 12; attempt++ {
+		resp, err = w.client.Register(ctx, regReq)
+		if err == nil {
+			break
+		}
+		if attempt == 12 {
+			return fmt.Errorf("failed to register with web service after 2 minutes: %w", err)
+		}
+		slog.Warn("registration failed, retrying", "attempt", attempt, "error", err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(10 * time.Second):
+		}
 	}
 	slog.Info("registered with web service", "watcher_id", resp.WatcherID, "probe_types", resp.RegisteredProbes)
 

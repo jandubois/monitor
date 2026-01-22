@@ -61,6 +61,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
+		"server_name":     s.config.Name,
 		"watchers":        watchers,
 		"all_healthy":     allHealthy,
 		"recent_failures": recentFailures,

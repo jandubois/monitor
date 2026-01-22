@@ -7,8 +7,8 @@
 # Usage:
 #   DATA_DIR=/path/to/data docker compose -f docker-compose.prod.yml up -d
 #
-# Override watcher name (defaults to "nas"):
-#   DATA_DIR=/path/to/data WATCHER_NAME=synology docker compose ...
+# Override server/watcher name (defaults to "nas"):
+#   DATA_DIR=/path/to/data NAME=synology docker compose ...
 
 services:
   postgres:
@@ -37,7 +37,7 @@ services:
 
   web:
     image: ghcr.io/jandubois/monitor:v0.1.0
-    command: sh -c 'AUTH_TOKEN=$$(cat /secrets/auth_token) exec /app/monitor web'
+    command: sh -c 'AUTH_TOKEN=$$(cat /secrets/auth_token) exec /app/monitor web --name=${NAME:-nas}'
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -58,7 +58,7 @@ services:
     image: ghcr.io/jandubois/monitor:v0.1.0
     command: >
       sh -c 'AUTH_TOKEN=$$(cat /secrets/auth_token) exec /app/monitor watcher
-      --name=${WATCHER_NAME:-nas}
+      --name=${NAME:-nas}
       --push-url=http://web:8080
       --callback-url=http://watcher:8081'
     restart: unless-stopped

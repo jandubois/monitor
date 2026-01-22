@@ -91,6 +91,7 @@ export interface WatcherStatus {
 }
 
 export interface SystemStatus {
+  server_name: string;
   watchers: WatcherStatus[];
   all_healthy: boolean;
   recent_failures: number;

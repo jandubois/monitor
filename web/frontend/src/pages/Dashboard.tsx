@@ -57,6 +57,13 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
     refetchInterval: 10000,
   });
 
+  // Update browser title when server name is loaded
+  useEffect(() => {
+    if (status?.server_name) {
+      document.title = `Monitor Dashboard on ${status.server_name}`;
+    }
+  }, [status?.server_name]);
+
   const { data: stats } = useQuery({
     queryKey: ['stats'],
     queryFn: () => api.getResultStats(),
@@ -173,7 +180,9 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
   return (
     <div className="p-6">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Monitor Dashboard</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          Monitor Dashboard{status?.server_name ? ` on ${status.server_name}` : ''}
+        </h1>
         <button
           onClick={onConfigClick}
           className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
