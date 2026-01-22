@@ -15,24 +15,24 @@ import (
 )
 
 // testServer creates a test server with a real database connection.
-// Returns nil if TEST_DATABASE_URL is not set.
+// Returns nil if TEST_DATABASE_PATH is not set.
 func testServer(t *testing.T) (*Server, func()) {
 	t.Helper()
 
-	dbURL := os.Getenv("TEST_DATABASE_URL")
-	if dbURL == "" {
-		t.Skip("TEST_DATABASE_URL not set, skipping integration test")
+	dbPath := os.Getenv("TEST_DATABASE_PATH")
+	if dbPath == "" {
+		t.Skip("TEST_DATABASE_PATH not set, skipping integration test")
 		return nil, nil
 	}
 
 	// Run migrations first
-	if err := db.RunMigrations(dbURL); err != nil {
-		t.Skipf("failed to run migrations (database may not be running): %v", err)
+	if err := db.RunMigrations(dbPath); err != nil {
+		t.Skipf("failed to run migrations: %v", err)
 		return nil, nil
 	}
 
 	ctx := context.Background()
-	database, err := db.Connect(ctx, dbURL)
+	database, err := db.Connect(ctx, dbPath)
 	if err != nil {
 		t.Skipf("failed to connect to test database: %v", err)
 		return nil, nil
@@ -52,12 +52,12 @@ func testServer(t *testing.T) (*Server, func()) {
 
 	cleanup := func() {
 		// Clean up test data
-		database.Pool().Exec(ctx, "DELETE FROM probe_results")
-		database.Pool().Exec(ctx, "DELETE FROM probe_configs")
-		database.Pool().Exec(ctx, "DELETE FROM watcher_probe_types")
-		database.Pool().Exec(ctx, "DELETE FROM probe_types")
-		database.Pool().Exec(ctx, "DELETE FROM watchers")
-		database.Pool().Exec(ctx, "DELETE FROM notification_channels")
+		database.DB().ExecContext(ctx, "DELETE FROM probe_results")
+		database.DB().ExecContext(ctx, "DELETE FROM probe_configs")
+		database.DB().ExecContext(ctx, "DELETE FROM watcher_probe_types")
+		database.DB().ExecContext(ctx, "DELETE FROM probe_types")
+		database.DB().ExecContext(ctx, "DELETE FROM watchers")
+		database.DB().ExecContext(ctx, "DELETE FROM notification_channels")
 		database.Close()
 	}
 
@@ -327,8 +327,8 @@ func TestHandleCreateAndDeleteNotificationChannel(t *testing.T) {
 
 	server.handleDeleteNotificationChannel(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status 200, got %d", w.Code)
+	if w.Code != http.StatusNoContent {
+		t.Errorf("expected status 204, got %d", w.Code)
 	}
 }
 

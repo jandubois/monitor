@@ -11,39 +11,24 @@
 #   DATA_DIR=/path/to/data NAME=synology docker compose ...
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: monitor
-      POSTGRES_PASSWORD: monitor
-      POSTGRES_DB: monitor
-    volumes:
-      - ${DATA_DIR:?DATA_DIR is required}/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U monitor"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
   migrate:
-    image: ghcr.io/jandubois/monitor:v0.1.0
+    image: ghcr.io/jandubois/monitor:latest
     command: migrate
     environment:
-      DATABASE_URL: postgres://monitor:monitor@postgres:5432/monitor?sslmode=disable
-    depends_on:
-      postgres:
-        condition: service_healthy
+      DATABASE_PATH: /data/monitor.db
+    volumes:
+      - ${DATA_DIR:?DATA_DIR is required}/db:/data
 
   web:
-    image: ghcr.io/jandubois/monitor:v0.1.0
+    image: ghcr.io/jandubois/monitor:latest
     command: sh -c 'AUTH_TOKEN=$$(cat /secrets/auth_token) exec /app/monitor web --name=${NAME:-nas}'
     restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: postgres://monitor:monitor@postgres:5432/monitor?sslmode=disable
+      DATABASE_PATH: /data/monitor.db
     volumes:
+      - ${DATA_DIR:?DATA_DIR is required}/db:/data
       - ${DATA_DIR:?DATA_DIR is required}/secrets:/secrets:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
@@ -55,7 +40,7 @@ services:
         condition: service_completed_successfully
 
   watcher:
-    image: ghcr.io/jandubois/monitor:v0.1.0
+    image: ghcr.io/jandubois/monitor:latest
     command: >
       sh -c 'AUTH_TOKEN=$$(cat /secrets/auth_token) exec /app/monitor watcher
       --name=${NAME:-nas}
@@ -67,4 +52,3 @@ services:
     depends_on:
       web:
         condition: service_healthy
-

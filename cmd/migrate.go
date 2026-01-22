@@ -19,18 +19,18 @@ func init() {
 }
 
 func runMigrate(cmd *cobra.Command, args []string) error {
-	databaseURL := getDatabaseURL(cmd)
+	databasePath := getDatabasePath(cmd)
 	down, _ := cmd.Flags().GetBool("down")
 
 	if down {
 		slog.Info("rolling back all migrations")
-		if err := db.RollbackMigrations(databaseURL); err != nil {
+		if err := db.RollbackMigrations(databasePath); err != nil {
 			return err
 		}
 		slog.Info("migrations rolled back")
 	} else {
 		slog.Info("running migrations")
-		if err := db.RunMigrations(databaseURL); err != nil {
+		if err := db.RunMigrations(databasePath); err != nil {
 			return err
 		}
 		slog.Info("migrations complete")

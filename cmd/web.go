@@ -43,7 +43,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	databaseURL := getDatabaseURL(cmd)
+	databasePath := getDatabasePath(cmd)
 	name, _ := cmd.Flags().GetString("name")
 	port, _ := cmd.Flags().GetInt("port")
 	authToken, _ := cmd.Flags().GetString("auth-token")
@@ -60,7 +60,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	}
 
 	// Connect to database
-	database, err := db.Connect(ctx, databaseURL)
+	database, err := db.Connect(ctx, databasePath)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
 	}

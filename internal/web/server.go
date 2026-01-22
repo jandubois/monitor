@@ -22,7 +22,7 @@ type Server struct {
 
 // NewServer creates a new web server.
 func NewServer(database *db.DB, cfg *config.WebConfig) (*Server, error) {
-	dispatcher := notify.NewDispatcher(database.Pool())
+	dispatcher := notify.NewDispatcher(database.DB())
 
 	s := &Server{
 		db:         database,

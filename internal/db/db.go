@@ -2,48 +2,54 @@ package db
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
-	"time"
+	"os"
+	"path/filepath"
 
-	"github.com/jackc/pgx/v5/pgxpool"
+	_ "modernc.org/sqlite"
 )
 
-// DB wraps a PostgreSQL connection pool.
+// DB wraps a SQLite database connection.
 type DB struct {
-	pool *pgxpool.Pool
+	db *sql.DB
 }
 
-// Connect establishes a connection to PostgreSQL.
-func Connect(ctx context.Context, databaseURL string) (*DB, error) {
-	config, err := pgxpool.ParseConfig(databaseURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse database URL: %w", err)
+// Connect opens a SQLite database at the given path.
+// Creates the parent directory if needed.
+func Connect(ctx context.Context, dbPath string) (*DB, error) {
+	// Create parent directory if needed
+	dir := filepath.Dir(dbPath)
+	if dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, fmt.Errorf("create database directory: %w", err)
+		}
 	}
 
-	config.MaxConns = 20
-	config.MinConns = 2
-	config.MaxConnLifetime = time.Hour
-	config.MaxConnIdleTime = 30 * time.Minute
-
-	pool, err := pgxpool.NewWithConfig(ctx, config)
+	// Open database with WAL mode and busy timeout
+	dsn := fmt.Sprintf("%s?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)", dbPath)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("create connection pool: %w", err)
+		return nil, fmt.Errorf("open database: %w", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
-		pool.Close()
+	// SQLite works best with a single connection for writes
+	db.SetMaxOpenConns(1)
+
+	if err := db.PingContext(ctx); err != nil {
+		db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
-	return &DB{pool: pool}, nil
+	return &DB{db: db}, nil
 }
 
-// Close closes the database connection pool.
-func (db *DB) Close() {
-	db.pool.Close()
+// Close closes the database connection.
+func (d *DB) Close() {
+	d.db.Close()
 }
 
-// Pool returns the underlying connection pool for direct access.
-func (db *DB) Pool() *pgxpool.Pool {
-	return db.pool
+// DB returns the underlying *sql.DB for direct access.
+func (d *DB) DB() *sql.DB {
+	return d.db
 }

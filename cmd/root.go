@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -24,18 +23,18 @@ func Execute() error {
 
 func init() {
 	rootCmd.AddGroup(&cobra.Group{ID: probeGroupID, Title: "Built-in Probes:"})
-	rootCmd.PersistentFlags().StringP("database-url", "d", "", "PostgreSQL connection URL")
+	rootCmd.PersistentFlags().StringP("database", "d", "", "SQLite database path")
 	rootCmd.PersistentFlags().String("log-level", "info", "Log level (debug, info, warn, error)")
 }
 
-func getDatabaseURL(cmd *cobra.Command) string {
-	url, _ := cmd.Flags().GetString("database-url")
-	if url == "" {
-		url = os.Getenv("DATABASE_URL")
+func getDatabasePath(cmd *cobra.Command) string {
+	path, _ := cmd.Flags().GetString("database")
+	if path == "" {
+		path = os.Getenv("DATABASE_PATH")
 	}
-	if url == "" {
-		fmt.Fprintln(os.Stderr, "error: database URL required (--database-url or DATABASE_URL)")
-		os.Exit(1)
+	if path == "" {
+		// Default to a reasonable location
+		path = "/var/lib/monitor/monitor.db"
 	}
-	return url
+	return path
 }

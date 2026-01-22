@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/jandubois/monitor/internal/db"
 	"github.com/jandubois/monitor/internal/notify"
 	"github.com/jandubois/monitor/internal/probe"
 )
@@ -86,21 +87,36 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upsert watcher
+	now := time.Now().UTC().Format(db.SQLiteTimeFormat)
+
+	// Upsert watcher using SQLite's INSERT OR REPLACE pattern
+	// First try to get existing watcher
 	var watcherID int
-	err := s.db.Pool().QueryRow(ctx, `
-		INSERT INTO watchers (name, version, callback_url, last_seen_at, registered_at)
-		VALUES ($1, $2, $3, NOW(), NOW())
-		ON CONFLICT (name) DO UPDATE SET
-			version = EXCLUDED.version,
-			callback_url = EXCLUDED.callback_url,
-			last_seen_at = NOW()
-		RETURNING id
-	`, req.Name, req.Version, req.CallbackURL).Scan(&watcherID)
+	err := s.db.DB().QueryRowContext(ctx, `SELECT id FROM watchers WHERE name = ?`, req.Name).Scan(&watcherID)
 	if err != nil {
-		slog.Error("failed to register watcher", "name", req.Name, "error", err)
-		http.Error(w, "failed to register watcher", http.StatusInternalServerError)
-		return
+		// Insert new watcher
+		result, err := s.db.DB().ExecContext(ctx, `
+			INSERT INTO watchers (name, version, callback_url, last_seen_at, registered_at)
+			VALUES (?, ?, ?, ?, ?)
+		`, req.Name, req.Version, req.CallbackURL, now, now)
+		if err != nil {
+			slog.Error("failed to register watcher", "name", req.Name, "error", err)
+			http.Error(w, "failed to register watcher", http.StatusInternalServerError)
+			return
+		}
+		id, _ := result.LastInsertId()
+		watcherID = int(id)
+	} else {
+		// Update existing watcher
+		_, err = s.db.DB().ExecContext(ctx, `
+			UPDATE watchers SET version = ?, callback_url = ?, last_seen_at = ?
+			WHERE id = ?
+		`, req.Version, req.CallbackURL, now, watcherID)
+		if err != nil {
+			slog.Error("failed to update watcher", "name", req.Name, "error", err)
+			http.Error(w, "failed to update watcher", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	// Register probe types
@@ -109,29 +125,45 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 			pt.Version = "0.0.0"
 		}
 
-		// Upsert probe type
+		argumentsJSON, _ := json.Marshal(pt.Arguments)
+
+		// Upsert probe type - check if it exists first
 		var probeTypeID int
-		err := s.db.Pool().QueryRow(ctx, `
-			INSERT INTO probe_types (name, version, description, arguments, registered_at)
-			VALUES ($1, $2, $3, $4, NOW())
-			ON CONFLICT (name, version) DO UPDATE SET
-				description = EXCLUDED.description,
-				arguments = EXCLUDED.arguments,
-				updated_at = NOW()
-			RETURNING id
-		`, pt.Name, pt.Version, pt.Description, pt.Arguments).Scan(&probeTypeID)
+		err := s.db.DB().QueryRowContext(ctx, `
+			SELECT id FROM probe_types WHERE name = ? AND version = ?
+		`, pt.Name, pt.Version).Scan(&probeTypeID)
 		if err != nil {
-			slog.Error("failed to register probe type", "name", pt.Name, "error", err)
-			continue
+			// Insert new probe type
+			result, err := s.db.DB().ExecContext(ctx, `
+				INSERT INTO probe_types (name, version, description, arguments, registered_at)
+				VALUES (?, ?, ?, ?, ?)
+			`, pt.Name, pt.Version, pt.Description, string(argumentsJSON), now)
+			if err != nil {
+				slog.Error("failed to register probe type", "name", pt.Name, "error", err)
+				continue
+			}
+			id, _ := result.LastInsertId()
+			probeTypeID = int(id)
+		} else {
+			// Update existing probe type
+			_, err = s.db.DB().ExecContext(ctx, `
+				UPDATE probe_types SET description = ?, arguments = ?, updated_at = ?
+				WHERE id = ?
+			`, pt.Description, string(argumentsJSON), now, probeTypeID)
+			if err != nil {
+				slog.Error("failed to update probe type", "name", pt.Name, "error", err)
+				continue
+			}
 		}
 
 		// Link probe type to watcher with executable path and subcommand
-		_, err = s.db.Pool().Exec(ctx, `
+		// Use INSERT OR REPLACE for SQLite
+		_, err = s.db.DB().ExecContext(ctx, `
 			INSERT INTO watcher_probe_types (watcher_id, probe_type_id, executable_path, subcommand)
-			VALUES ($1, $2, $3, $4)
+			VALUES (?, ?, ?, ?)
 			ON CONFLICT (watcher_id, probe_type_id) DO UPDATE SET
-				executable_path = EXCLUDED.executable_path,
-				subcommand = EXCLUDED.subcommand
+				executable_path = excluded.executable_path,
+				subcommand = excluded.subcommand
 		`, watcherID, probeTypeID, pt.ExecutablePath, pt.Subcommand)
 		if err != nil {
 			slog.Error("failed to link probe type to watcher", "watcher", req.Name, "probe", pt.Name, "error", err)
@@ -142,8 +174,8 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
-		"watcher_id":         watcherID,
-		"registered_probes":  len(req.ProbeTypes),
+		"watcher_id":        watcherID,
+		"registered_probes": len(req.ProbeTypes),
 	})
 }
 
@@ -161,14 +193,17 @@ func (s *Server) handlePushHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := s.db.Pool().Exec(ctx, `
-		UPDATE watchers SET last_seen_at = NOW(), version = $2 WHERE name = $1
-	`, req.Name, req.Version)
+	now := time.Now().UTC().Format(db.SQLiteTimeFormat)
+
+	result, err := s.db.DB().ExecContext(ctx, `
+		UPDATE watchers SET last_seen_at = ?, version = ? WHERE name = ?
+	`, now, req.Version, req.Name)
 	if err != nil {
 		http.Error(w, "failed to update heartbeat", http.StatusInternalServerError)
 		return
 	}
-	if result.RowsAffected() == 0 {
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
 		http.Error(w, "watcher not registered", http.StatusNotFound)
 		return
 	}
@@ -188,7 +223,7 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 
 	// Get watcher ID
 	var watcherID int
-	err := s.db.Pool().QueryRow(ctx, `SELECT id FROM watchers WHERE name = $1`, req.Watcher).Scan(&watcherID)
+	err := s.db.DB().QueryRowContext(ctx, `SELECT id FROM watchers WHERE name = ?`, req.Watcher).Scan(&watcherID)
 	if err != nil {
 		http.Error(w, "watcher not found", http.StatusNotFound)
 		return
@@ -204,7 +239,7 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// Calculate next_run from interval
 		var intervalStr string
-		err := s.db.Pool().QueryRow(ctx, `SELECT interval FROM probe_configs WHERE id = $1`, req.ProbeConfigID).Scan(&intervalStr)
+		err := s.db.DB().QueryRowContext(ctx, `SELECT interval FROM probe_configs WHERE id = ?`, req.ProbeConfigID).Scan(&intervalStr)
 		if err == nil {
 			if interval, err := parseInterval(intervalStr); err == nil && interval > 0 {
 				t := req.ExecutedAt.Add(interval)
@@ -214,10 +249,18 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert result
-	_, err = s.db.Pool().Exec(ctx, `
+	metricsJSON, _ := json.Marshal(req.Metrics)
+	dataJSON, _ := json.Marshal(req.Data)
+	var nextRunAtStr *string
+	if nextRunAt != nil {
+		s := nextRunAt.UTC().Format(db.SQLiteTimeFormat)
+		nextRunAtStr = &s
+	}
+
+	_, err = s.db.DB().ExecContext(ctx, `
 		INSERT INTO probe_results (probe_config_id, watcher_id, status, message, metrics, data, duration_ms, next_run_at, scheduled_at, executed_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`, req.ProbeConfigID, watcherID, req.Status, req.Message, req.Metrics, req.Data, req.DurationMs, nextRunAt, req.ScheduledAt, req.ExecutedAt)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, req.ProbeConfigID, watcherID, req.Status, req.Message, string(metricsJSON), string(dataJSON), req.DurationMs, nextRunAtStr, req.ScheduledAt.UTC().Format(db.SQLiteTimeFormat), req.ExecutedAt.UTC().Format(db.SQLiteTimeFormat))
 	if err != nil {
 		slog.Error("failed to insert result", "probe_config_id", req.ProbeConfigID, "error", err)
 		http.Error(w, "failed to record result", http.StatusInternalServerError)
@@ -225,10 +268,10 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update next_run_at on probe_config
-	if nextRunAt != nil {
-		_, err = s.db.Pool().Exec(ctx, `
-			UPDATE probe_configs SET next_run_at = $1 WHERE id = $2
-		`, nextRunAt, req.ProbeConfigID)
+	if nextRunAtStr != nil {
+		_, err = s.db.DB().ExecContext(ctx, `
+			UPDATE probe_configs SET next_run_at = ? WHERE id = ?
+		`, nextRunAtStr, req.ProbeConfigID)
 		if err != nil {
 			slog.Error("failed to update next_run_at", "probe_config_id", req.ProbeConfigID, "error", err)
 		}
@@ -244,17 +287,17 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 func (s *Server) checkStatusChangeAndNotify(ctx context.Context, configID int, newStatus probe.Status, message string) {
 	// Get probe config details, watcher paused status, and previous status
 	var probeName string
-	var notificationChannels []int
+	var notificationChannels db.JSONIntArray
 	var prevStatus *string
-	var watcherPaused bool
+	var watcherPaused int
 
-	err := s.db.Pool().QueryRow(ctx, `
+	err := s.db.DB().QueryRowContext(ctx, `
 		SELECT pc.name, pc.notification_channels,
 		       (SELECT status FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1 OFFSET 1),
-		       COALESCE(w.paused, false)
+		       COALESCE(w.paused, 0)
 		FROM probe_configs pc
 		LEFT JOIN watchers w ON w.id = pc.watcher_id
-		WHERE pc.id = $1
+		WHERE pc.id = ?
 	`, configID).Scan(&probeName, &notificationChannels, &prevStatus, &watcherPaused)
 	if err != nil {
 		slog.Error("failed to get probe config for notification", "config_id", configID, "error", err)
@@ -262,7 +305,7 @@ func (s *Server) checkStatusChangeAndNotify(ctx context.Context, configID int, n
 	}
 
 	// Skip notifications if watcher is paused
-	if watcherPaused {
+	if watcherPaused != 0 {
 		return
 	}
 
@@ -301,44 +344,53 @@ func (s *Server) handlePushAlert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now().UTC().Format(db.SQLiteTimeFormat)
+
 	// Find or create a probe config for this external source
 	var configID int
-	var notificationChannels []int
+	var notificationChannels db.JSONIntArray
 
-	err := s.db.Pool().QueryRow(ctx, `
-		SELECT id, notification_channels FROM probe_configs WHERE name = $1 AND watcher_id IS NULL
+	err := s.db.DB().QueryRowContext(ctx, `
+		SELECT id, notification_channels FROM probe_configs WHERE name = ? AND watcher_id IS NULL
 	`, req.Source).Scan(&configID, &notificationChannels)
 	if err != nil {
 		// Create probe type and config for external alerts
 		var probeTypeID int
-		err = s.db.Pool().QueryRow(ctx, `
-			INSERT INTO probe_types (name, version, description, arguments, registered_at)
-			VALUES ($1, '1.0.0', 'External alert source', '{}', NOW())
-			ON CONFLICT (name, version) DO UPDATE SET updated_at = NOW()
-			RETURNING id
-		`, "external-alert").Scan(&probeTypeID)
+		err = s.db.DB().QueryRowContext(ctx, `
+			SELECT id FROM probe_types WHERE name = ? AND version = ?
+		`, "external-alert", "1.0.0").Scan(&probeTypeID)
 		if err != nil {
-			http.Error(w, "failed to create probe type", http.StatusInternalServerError)
-			return
+			// Insert the probe type
+			result, err := s.db.DB().ExecContext(ctx, `
+				INSERT INTO probe_types (name, version, description, arguments, registered_at)
+				VALUES (?, ?, ?, ?, ?)
+			`, "external-alert", "1.0.0", "External alert source", "{}", now)
+			if err != nil {
+				http.Error(w, "failed to create probe type", http.StatusInternalServerError)
+				return
+			}
+			id, _ := result.LastInsertId()
+			probeTypeID = int(id)
 		}
 
-		err = s.db.Pool().QueryRow(ctx, `
+		result, err := s.db.DB().ExecContext(ctx, `
 			INSERT INTO probe_configs (probe_type_id, name, enabled, arguments, interval, timeout_seconds)
-			VALUES ($1, $2, true, '{}', '0', 0)
-			RETURNING id
-		`, probeTypeID, req.Source).Scan(&configID)
+			VALUES (?, ?, 1, '{}', '0', 0)
+		`, probeTypeID, req.Source)
 		if err != nil {
 			http.Error(w, "failed to create probe config", http.StatusInternalServerError)
 			return
 		}
+		id, _ := result.LastInsertId()
+		configID = int(id)
 	}
 
 	// Insert result (no watcher_id for external alerts)
-	now := time.Now()
-	_, err = s.db.Pool().Exec(ctx, `
+	dataJSON, _ := json.Marshal(req.Data)
+	_, err = s.db.DB().ExecContext(ctx, `
 		INSERT INTO probe_results (probe_config_id, status, message, data, duration_ms, scheduled_at, executed_at)
-		VALUES ($1, $2, $3, $4, 0, $5, $5)
-	`, configID, req.Status, req.Message, req.Data, now)
+		VALUES (?, ?, ?, ?, 0, ?, ?)
+	`, configID, req.Status, req.Message, string(dataJSON), now, now)
 	if err != nil {
 		http.Error(w, "failed to record alert", http.StatusInternalServerError)
 		return
@@ -368,21 +420,21 @@ func (s *Server) handlePushGetConfigs(w http.ResponseWriter, r *http.Request) {
 
 	// Get watcher ID
 	var watcherID int
-	err := s.db.Pool().QueryRow(ctx, `SELECT id FROM watchers WHERE name = $1`, watcherName).Scan(&watcherID)
+	err := s.db.DB().QueryRowContext(ctx, `SELECT id FROM watchers WHERE name = ?`, watcherName).Scan(&watcherID)
 	if err != nil {
 		http.Error(w, "watcher not found", http.StatusNotFound)
 		return
 	}
 
 	// Get configs assigned to this watcher with probe type info
-	rows, err := s.db.Pool().Query(ctx, `
+	rows, err := s.db.DB().QueryContext(ctx, `
 		SELECT pc.id, pt.name, pt.version, wpt.executable_path, wpt.subcommand, pc.name, pc.arguments,
 		       pc.interval, pc.timeout_seconds, pc.next_run_at
 		FROM probe_configs pc
 		JOIN probe_types pt ON pt.id = pc.probe_type_id
-		JOIN watcher_probe_types wpt ON wpt.probe_type_id = pt.id AND wpt.watcher_id = $1
-		WHERE pc.watcher_id = $1 AND pc.enabled = true
-	`, watcherID)
+		JOIN watcher_probe_types wpt ON wpt.probe_type_id = pt.id AND wpt.watcher_id = ?
+		WHERE pc.watcher_id = ? AND pc.enabled = 1
+	`, watcherID, watcherID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -393,15 +445,21 @@ func (s *Server) handlePushGetConfigs(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var cfg ProbeConfigResponse
 		var subcommand *string
+		var arguments db.JSONMap
+		var nextRunAt db.NullTime
 		if err := rows.Scan(
 			&cfg.ID, &cfg.ProbeTypeName, &cfg.ProbeVersion, &cfg.ExecutablePath, &subcommand,
-			&cfg.Name, &cfg.Arguments, &cfg.Interval, &cfg.TimeoutSeconds, &cfg.NextRunAt,
+			&cfg.Name, &arguments, &cfg.Interval, &cfg.TimeoutSeconds, &nextRunAt,
 		); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		cfg.Arguments = arguments
 		if subcommand != nil {
 			cfg.Subcommand = *subcommand
+		}
+		if nextRunAt.Valid {
+			cfg.NextRunAt = &nextRunAt.Time
 		}
 		configs = append(configs, cfg)
 	}

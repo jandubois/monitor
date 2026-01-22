@@ -2,34 +2,34 @@ package notify
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"sync"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jandubois/monitor/internal/probe"
 )
 
 // Dispatcher manages notification channels and sends notifications.
 type Dispatcher struct {
-	pool *pgxpool.Pool
+	db *sql.DB
 
 	mu       sync.RWMutex
 	channels map[int]Channel
 }
 
 // NewDispatcher creates a new notification dispatcher.
-func NewDispatcher(pool *pgxpool.Pool) *Dispatcher {
+func NewDispatcher(db *sql.DB) *Dispatcher {
 	return &Dispatcher{
-		pool:     pool,
+		db:       db,
 		channels: make(map[int]Channel),
 	}
 }
 
 // LoadChannels loads notification channels from the database.
 func (d *Dispatcher) LoadChannels(ctx context.Context) error {
-	rows, err := d.pool.Query(ctx, `
-		SELECT id, type, config FROM notification_channels WHERE enabled = true
+	rows, err := d.db.QueryContext(ctx, `
+		SELECT id, type, config FROM notification_channels WHERE enabled = 1
 	`)
 	if err != nil {
 		return err
@@ -44,14 +44,14 @@ func (d *Dispatcher) LoadChannels(ctx context.Context) error {
 	for rows.Next() {
 		var id int
 		var channelType string
-		var configJSON []byte
+		var configJSON string
 
 		if err := rows.Scan(&id, &channelType, &configJSON); err != nil {
 			slog.Error("scan notification channel failed", "error", err)
 			continue
 		}
 
-		channel, err := d.createChannel(channelType, configJSON)
+		channel, err := d.createChannel(channelType, []byte(configJSON))
 		if err != nil {
 			slog.Error("create notification channel failed", "type", channelType, "error", err)
 			continue
@@ -117,9 +117,9 @@ func (d *Dispatcher) NotifyStatusChange(ctx context.Context, channelIDs []int, c
 // GetPreviousStatus retrieves the previous status for a probe config.
 func (d *Dispatcher) GetPreviousStatus(ctx context.Context, configID int) (probe.Status, error) {
 	var status string
-	err := d.pool.QueryRow(ctx, `
+	err := d.db.QueryRowContext(ctx, `
 		SELECT status FROM probe_results
-		WHERE probe_config_id = $1
+		WHERE probe_config_id = ?
 		ORDER BY executed_at DESC
 		LIMIT 1 OFFSET 1
 	`, configID).Scan(&status)
