@@ -142,8 +142,22 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
   const pauseToggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
       api.setProbeEnabled(id, enabled),
+    onMutate: ({ id, enabled }) => {
+      if (enabled) {
+        trackRunningProbe(id);
+      }
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+    },
+    onError: (_error, { id, enabled }) => {
+      if (enabled) {
+        setRunningProbes(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
     },
   });
 
