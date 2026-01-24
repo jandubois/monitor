@@ -5,40 +5,30 @@ Personal infrastructure monitoring system with self-describing probes and multi-
 ## Overview
 
 ```
-                                    ┌─────────────────────────────────────┐
-                                    │         Web Service (central)       │
-                                    │                                     │
-  ┌─────────────────────┐           │  - REST API for SPA                 │
-  │       SQLite        │◄──────────│  - Push API for watchers            │
-  │                     │           │  - Serves React static files        │
-  │  - watchers         │           │  - Auth middleware                  │
-  │  - probe_types      │           │  - Notification dispatcher          │
-  │  - probe_configs    │           │                                     │
-  │  - probe_results    │           └──────────────┬──────────────────────┘
-  │  - notifications    │                          │
-  └─────────────────────┘                          │ HTTPS
-                                                   │
-          ┌────────────────────────────────────────┼────────────────────────┐
-          │                                        │                        │
-          ▼                                        ▼                        ▼
-┌─────────────────────┐              ┌─────────────────────┐    ┌──────────────────┐
-│   Watcher (NAS)     │              │   Watcher (Mac)     │    │ External Systems │
-│   name: "nas"       │              │   name: "macbook"   │    │                  │
-│                     │──POST───────▶│                     │    │  GitHub Actions  │
-│   Probes:           │   results    │   Probes:           │    │  Custom scripts  │
-│   - disk-space      │              │   - disk-space      │    │                  │
-│   - rd-releases     │              │   - git-status      │    │                  │
-└─────────────────────┘              └─────────────────────┘    └────────┬─────────┘
-                                                                         │
-                                                                    POST alerts
-                                                                         │
-                                                                         ▼
-                                                              ┌─────────────────────┐
-                                                              │   Browser (SPA)     │
-                                                              │   - Dashboard       │
-                                                              │   - Config UI       │
-                                                              │   - History/Trends  │
-                                                              └─────────────────────┘
+                         ┌─────────────────────────────────────┐
+                         │         Web Service (central)       │
+                         │                                     │
+┌─────────────────────┐  │  - REST API for SPA                 │  ┌─────────────────────┐
+│       SQLite        │◄─│  - Push API for watchers            │─▶│   Browser (SPA)     │
+│                     │  │  - Serves React static files        │  │   - Dashboard       │
+│  - watchers         │  │  - Auth middleware                  │  │   - Config UI       │
+│  - probe_types      │  │  - Notification dispatcher          │  │   - History/Trends  │
+│  - probe_configs    │  │                                     │  └─────────────────────┘
+│  - probe_results    │  └──────────────┬──────────────────────┘
+└─────────────────────┘                 │
+                                        │ HTTPS (push results, fetch configs)
+                    ┌───────────────────┼───────────────────┐
+                    │                   │                   │
+                    ▲                   ▲                   ▲
+                    │                   │                   │
+        ┌───────────┴─────┐   ┌────────┴────────┐   ┌──────┴───────────┐
+        │  Watcher (NAS)  │   │  Watcher (Mac)  │   │ External Systems │
+        │  name: "nas"    │   │  name: "macbook"│   │                  │
+        │                 │   │                 │   │  GitHub Actions  │
+        │  Probes:        │   │  Probes:        │   │  Custom scripts  │
+        │  - disk-space   │   │  - disk-space   │   │                  │
+        │  - rd-releases  │   │  - git-status   │   │                  │
+        └─────────────────┘   └─────────────────┘   └──────────────────┘
 ```
 
 **Design principles:**
