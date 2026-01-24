@@ -6,10 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/jandubois/monitor/internal/probe"
 )
@@ -100,6 +103,7 @@ func (e *Executor) runProbe(ctx context.Context, cfg *ProbeConfig) (*probe.Resul
 	defer cancel()
 
 	cmd := exec.CommandContext(timeoutCtx, cfg.ExecutablePath, args...)
+	cmd.Env = buildEnv(cfg.Arguments)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -149,4 +153,34 @@ func buildArgs(arguments map[string]any) []string {
 		args = append(args, fmt.Sprintf("--%s=%v", key, value))
 	}
 	return args
+}
+
+// buildEnv creates environment variables from probe arguments.
+// Each argument is exposed as PROBE_<NAME>=<value> where <NAME> is the
+// argument name converted to uppercase with hyphens replaced by underscores
+// and any other non-alphanumeric characters removed.
+func buildEnv(arguments map[string]any) []string {
+	env := os.Environ()
+	for key, value := range arguments {
+		envName := toEnvName(key)
+		if envName != "" {
+			env = append(env, fmt.Sprintf("PROBE_%s=%v", envName, value))
+		}
+	}
+	return env
+}
+
+// toEnvName converts a parameter name to a valid environment variable name.
+// It uppercases the name, replaces hyphens with underscores, and removes
+// any characters that are not letters, numbers, or underscores.
+func toEnvName(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(name) {
+		if r == '-' {
+			b.WriteRune('_')
+		} else if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
