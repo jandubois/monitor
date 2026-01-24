@@ -19,7 +19,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/jandubois/monitor/
 
 # Final image
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata git
+RUN apk add --no-cache ca-certificates tzdata git bash curl jq
 WORKDIR /app
 COPY --from=go-builder /app/monitor .
+COPY probes/ ./probes/
 ENTRYPOINT ["/app/monitor"]

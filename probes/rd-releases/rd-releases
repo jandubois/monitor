@@ -1,0 +1,126 @@
+#!/bin/bash
+#
+# Check whether the latest Rancher Desktop release appears in the update channel.
+#
+# Parameters (environment variables):
+#   PROBE_WARN_DAYS     - Days until warning if release missing (default: 4)
+#   PROBE_CRITICAL_DAYS - Days until critical alert (default: 7)
+#
+# Authentication (checked in order):
+#   GH_TOKEN, GITHUB_TOKEN, or `gh auth token`
+
+set -euo pipefail
+
+if [[ "${1:-}" == "--describe" ]]; then
+    cat <<'EOF'
+{
+  "name": "rd-releases",
+  "description": "Check if the latest Rancher Desktop release is in the update channel",
+  "version": "1.0.0",
+  "arguments": {
+    "optional": {
+      "warn_days": {
+        "type": "number",
+        "description": "Days after release to warn if not in update channel",
+        "default": 4
+      },
+      "critical_days": {
+        "type": "number",
+        "description": "Days after release to go critical if not in update channel",
+        "default": 7
+      }
+    }
+  }
+}
+EOF
+    exit 0
+fi
+
+GITHUB_API="https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest"
+UPDATE_CHANNEL="https://desktop.version.rancher.io/v1/checkupgrade"
+
+warn_days="${PROBE_WARN_DAYS:-4}"
+critical_days="${PROBE_CRITICAL_DAYS:-7}"
+
+output_result() {
+    jq --null-input \
+        --arg status "$1" \
+        --arg message "$2" \
+        --argjson days_since "$days_since" \
+        --argjson warn_days "$warn_days" \
+        --argjson critical_days "$critical_days" \
+        --arg latest_version "$latest_version" \
+        --arg channel_version "$channel_version" \
+        --arg published_at "$published_at" \
+        '{
+            status: $status,
+            message: $message,
+            metrics: {
+                days_since_release: $days_since,
+                warn_days: $warn_days,
+                critical_days: $critical_days
+            },
+            data: {
+                latest_version: $latest_version,
+                channel_version: $channel_version,
+                published_at: $published_at
+            }
+        }'
+}
+
+output_error() {
+    jq --null-input --arg message "$1" '{status: "unknown", message: $message}'
+    exit 0
+}
+
+# Resolve GitHub token
+token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
+if [[ -z "$token" ]] && command -v gh &>/dev/null; then
+    token=$(gh auth token 2>/dev/null) || true
+fi
+
+curl_github() {
+    if [[ -n "$token" ]]; then
+        curl --silent --fail --header "Authorization: Bearer $token" "$1"
+    else
+        curl --silent --fail "$1"
+    fi
+}
+
+# Fetch latest GitHub release
+github_response=$(curl_github "$GITHUB_API") || output_error "Failed to fetch GitHub release"
+
+# Extract version (strip leading 'v') and published date
+read -r latest_version published_at < <(
+    echo "$github_response" | jq -r '[(.tag_name | ltrimstr("v")), .published_at] | @tsv'
+) || output_error "Failed to parse GitHub response"
+
+if [[ -z "$latest_version" || "$latest_version" == "null" ]]; then
+    output_error "No release found on GitHub"
+fi
+
+# Fetch update channel
+channel_response=$(curl --silent --fail -X POST "$UPDATE_CHANNEL" -d '{}') || output_error "Failed to fetch update channel"
+
+# Find the version tagged as "latest" in the update channel
+channel_version=$(echo "$channel_response" | jq -r '.versions[] | select(.Tags[]? == "latest") | .Name') || output_error "Failed to parse update channel response"
+
+if [[ -z "$channel_version" ]]; then
+    output_error "No version tagged as 'latest' in update channel"
+fi
+
+# Calculate days since release (jq handles ISO 8601 parsing)
+now_epoch=$(date "+%s")
+published_epoch=$(echo "$published_at" | jq -rR 'try fromdate') || output_error "Failed to parse release date"
+days_since=$(( (now_epoch - published_epoch) / 86400 ))
+
+# Check if latest release is in the update channel
+if [[ "$latest_version" == "$channel_version" ]]; then
+    output_result "ok" "Latest release $latest_version is in update channel"
+elif [[ "$days_since" -gt "$critical_days" ]]; then
+    output_result "critical" "Release $latest_version not in update channel after $days_since days"
+elif [[ "$days_since" -gt "$warn_days" ]]; then
+    output_result "warning" "Release $latest_version not in update channel after $days_since days"
+else
+    output_result "ok" "Release $latest_version not yet in update channel ($days_since days old)"
+fi

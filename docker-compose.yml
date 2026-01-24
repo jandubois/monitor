@@ -37,7 +37,7 @@ services:
       context: .
       args:
         VERSION: ${VERSION:-dev}
-    command: ["watcher", "--name", "default", "--push-url", "http://web:8080", "--callback-url", "http://watcher:8081"]
+    command: ["watcher", "--name", "default", "--push-url", "http://web:8080", "--callback-url", "http://watcher:8081", "--probes-dir", "/app/probes"]
     environment:
       AUTH_TOKEN: ${AUTH_TOKEN:-changeme}
       GH_TOKEN: ${GH_TOKEN:-}
