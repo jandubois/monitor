@@ -64,7 +64,7 @@ $ ./probes/disk-space/disk-space --path / --min_free_gb 10
 
 **Available probes:** disk-space, command, git-status, github, debug
 
-**Adding a probe:** Create an executable in `probes/<name>/` that implements `--describe` and returns JSON results. Restart the watcher to discover it.
+**Adding a probe:** Create an executable in `probes/<name>/` that implements `--describe` and returns JSON results. Restart the watcher to discover it. See [docs/probes.md](docs/probes.md) for the full SDK.
 
 ## Running a Remote Watcher
 
