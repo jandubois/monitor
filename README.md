@@ -19,7 +19,7 @@ Default auth token: `changeme` (set `AUTH_TOKEN` env var to change).
 
 ## Architecture
 
-A central **web service** stores configuration and results in PostgreSQL. One or more **watchers** run on different machines, executing probes and pushing results via HTTP.
+A central **web service** stores configuration and results in SQLite. One or more **watchers** run on different machines, executing probes and pushing results via HTTP.
 
 ```
 ┌──────────────┐     HTTP      ┌──────────────┐
@@ -32,7 +32,7 @@ A central **web service** stores configuration and results in PostgreSQL. One or
 └──────────────┘
 ```
 
-Watchers have no direct database access. See [docs/PLAN.md](docs/PLAN.md) for full architecture details.
+Watchers have no direct database access. See [docs/architecture.md](docs/architecture.md) for full architecture details.
 
 ## Probes
 
@@ -104,7 +104,7 @@ All endpoints require `Authorization: Bearer <token>` header.
 | `GET /api/results?config_id=N` | Query probe results |
 | `POST /api/push/alert` | External alert webhook |
 
-See [docs/PLAN.md](docs/PLAN.md) for complete API reference.
+See [docs/architecture.md](docs/architecture.md) for complete API reference.
 
 ## Development
 
@@ -136,5 +136,5 @@ internal/
 probes/              External probe executables
 web/frontend/        React SPA (TypeScript, Tailwind)
 e2e/                 Playwright end-to-end tests
-docs/PLAN.md         Full architecture specification
+docs/                Architecture and SDK documentation
 ```
