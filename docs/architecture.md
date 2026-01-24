@@ -5,37 +5,41 @@ Personal infrastructure monitoring system with self-describing probes and multi-
 ## Overview
 
 ```
-                         ┌─────────────────────────────────────┐
-                         │         Web Service (central)       │
-                         │                                     │
-┌─────────────────────┐  │  - REST API for SPA                 │  ┌─────────────────────┐
-│       SQLite        │◄─│  - Push API for watchers            │─▶│   Browser (SPA)     │
-│                     │  │  - Serves React static files        │  │   - Dashboard       │
-│  - watchers         │  │  - Auth middleware                  │  │   - Config UI       │
-│  - probe_types      │  │  - Notification dispatcher          │  │   - History/Trends  │
-│  - probe_configs    │  │                                     │  └─────────────────────┘
-│  - probe_results    │  └──────────────┬──────────────────────┘
-└─────────────────────┘                 │
-                                        │ HTTPS (push results, fetch configs)
-                    ┌───────────────────┼───────────────────┐
-                    │                   │                   │
-                    ▲                   ▲                   ▲
-                    │                   │                   │
-        ┌───────────┴─────┐   ┌────────┴────────┐   ┌──────┴───────────┐
-        │  Watcher (NAS)  │   │  Watcher (Mac)  │   │ External Systems │
-        │  name: "nas"    │   │  name: "macbook"│   │                  │
-        │                 │   │                 │   │  GitHub Actions  │
-        │  Probes:        │   │  Probes:        │   │  Custom scripts  │
-        │  - disk-space   │   │  - disk-space   │   │                  │
-        │  - rd-releases  │   │  - git-status   │   │                  │
-        └─────────────────┘   └─────────────────┘   └──────────────────┘
+                          ┌─────────────────────────────────────┐
+                          │         Web Service (central)       │
+                          │                                     │
+┌─────────────────────┐   │  - REST API for SPA                 │   ┌─────────────────────┐
+│       SQLite        │◄──│  - Push API for watchers            │──▶│   Browser (SPA)     │
+│                     │   │  - Serves React static files        │   │   - Dashboard       │
+│  - watchers         │   │  - Auth middleware                  │   │   - Config UI       │
+│  - probe_types      │   │  - Notification dispatcher          │   │   - History/Trends  │
+│  - probe_configs    │   │                                     │   └─────────────────────┘
+│  - probe_results    │   └──────────────┬──────────────────────┘
+└─────────────────────┘                  │
+                                         │ HTTPS (push results, fetch configs)
+                          ┌──────────────┴──────────────┐
+                          │                             │
+                          ▲                             ▲
+                          │                             │
+              ┌───────────┴─────┐           ┌──────────┴───────┐
+              │  Watcher (NAS)  │           │  Watcher (Mac)   │
+              │                 │           │                  │
+              │  Probes:        │           │  Probes:         │
+              │  - disk-space   │           │  - disk-space    │
+              │  - rd-releases  │           │  - git-status    │
+              │  - github       │           │  - github        │
+              └────────┬────────┘           └────────┬─────────┘
+                       │                             │
+                       ▼                             ▼
+               External APIs              Local filesystem, git repos
+               (GitHub, etc.)
 ```
 
 **Design principles:**
 - Web service is the central hub; all writes go through its API
 - Watchers push results via HTTP (no direct database access)
-- External systems push alerts directly via webhook
 - Multiple watchers supported, each with its own probes
+- Probes can check local resources or external APIs
 - Single Go binary with `watcher` and `web` modes
 
 ## Components
