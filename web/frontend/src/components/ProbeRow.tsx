@@ -134,7 +134,10 @@ export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseT
         <div className="flex items-center gap-2 min-w-0">
           <div className={`w-2 h-2 rounded-full flex-shrink-0 ${getStatusColor(config.last_status)}`} />
           <span className="font-medium text-gray-900 truncate">{config.name}</span>
-          {isPaused && (
+          {config.orphaned && (
+            <span className="text-xs px-1 py-0.5 bg-red-100 text-red-600 rounded" title="No watcher provides this probe type">orphaned</span>
+          )}
+          {isPaused && !config.orphaned && (
             <span className="text-xs px-1 py-0.5 bg-gray-200 text-gray-500 rounded">paused</span>
           )}
         </div>
@@ -187,13 +190,15 @@ export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseT
             <>
               <button
                 onClick={onRerun}
-                disabled={isRunning}
+                disabled={isRunning || config.orphaned}
                 className={`p-1 rounded ${
                   isRunning
                     ? 'text-blue-500 cursor-not-allowed'
-                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                    : config.orphaned
+                      ? 'text-gray-300 cursor-not-allowed'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
                 }`}
-                title={isRunning ? 'Running...' : 'Rerun'}
+                title={config.orphaned ? 'Cannot run: no watcher provides this probe' : isRunning ? 'Running...' : 'Rerun'}
               >
                 {isRunning ? <SpinnerIcon /> : <PlayIcon />}
               </button>

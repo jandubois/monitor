@@ -415,7 +415,12 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 		       (SELECT status FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_status,
 		       (SELECT summary FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_summary,
 		       (SELECT message FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_message,
-		       (SELECT executed_at FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_executed_at
+		       (SELECT executed_at FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_executed_at,
+		       NOT EXISTS (
+		           SELECT 1 FROM watcher_probe_types wpt
+		           JOIN probe_types wpt_pt ON wpt_pt.id = wpt.probe_type_id
+		           WHERE wpt_pt.name = pt.name
+		       ) as orphaned
 		FROM probe_configs pc
 		JOIN probe_types pt ON pt.id = pc.probe_type_id
 		LEFT JOIN watchers w ON w.id = pc.watcher_id
@@ -465,6 +470,7 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 		var createdAt db.NullTime
 		var updatedAt, lastExecutedAt db.NullTime
 		var lastStatus, lastSummary, lastMessage *string
+		var orphaned int
 
 		if err := rows.Scan(
 			&id, &probeTypeID, &probeTypeName, &name, &enabled,
@@ -472,6 +478,7 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 			&watcherID, &watcherName, &nextRunAt, &groupPath, &keywords,
 			&createdAt, &updatedAt,
 			&lastStatus, &lastSummary, &lastMessage, &lastExecutedAt,
+			&orphaned,
 		); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -518,6 +525,9 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 		}
 		if lastExecutedAt.Valid {
 			config["last_executed_at"] = lastExecutedAt.Time
+		}
+		if orphaned != 0 {
+			config["orphaned"] = true
 		}
 
 		configs = append(configs, config)

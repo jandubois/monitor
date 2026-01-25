@@ -908,3 +908,268 @@ func TestWatcherEventAcknowledge(t *testing.T) {
 	}
 }
 
+// TestOrphanedProbeConfig verifies that a probe config is marked as orphaned
+// when no watcher provides a probe with the same name.
+func TestOrphanedProbeConfig(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	ctx := server.db.DB()
+
+	// Create a probe type without a watcher link
+	_, err := ctx.Exec(`
+		INSERT INTO probe_types (name, version, description, arguments, registered_at)
+		VALUES ('orphaned-probe', '1.0.0', 'A probe that will be orphaned', '{}', datetime('now'))
+	`)
+	if err != nil {
+		t.Fatalf("failed to create probe type: %v", err)
+	}
+
+	var probeTypeID int
+	err = ctx.QueryRow(`SELECT id FROM probe_types WHERE name = 'orphaned-probe'`).Scan(&probeTypeID)
+	if err != nil {
+		t.Fatalf("failed to get probe type ID: %v", err)
+	}
+
+	// Create a config pointing to this orphaned probe type
+	_, err = ctx.Exec(`
+		INSERT INTO probe_configs (probe_type_id, name, enabled, arguments, interval, timeout_seconds, notification_channels)
+		VALUES (?, 'Orphaned Test', 1, '{}', '1h', 60, '[]')
+	`, probeTypeID)
+	if err != nil {
+		t.Fatalf("failed to create probe config: %v", err)
+	}
+
+	// List configs and verify orphaned flag
+	req := httptest.NewRequest("GET", "/api/probe-configs", nil)
+	w := httptest.NewRecorder()
+
+	server.handleListProbeConfigs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list configs failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var configs []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&configs); err != nil {
+		t.Fatalf("failed to decode configs response: %v", err)
+	}
+
+	found := false
+	for _, cfg := range configs {
+		if cfg["name"] == "Orphaned Test" {
+			found = true
+			orphaned, ok := cfg["orphaned"].(bool)
+			if !ok || !orphaned {
+				t.Error("expected orphaned config to have orphaned=true")
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Fatal("orphaned config not found in response")
+	}
+
+	// Now register a watcher with this probe type
+	registerBody := `{
+		"name": "rescue-watcher",
+		"version": "1.0.0",
+		"token": "rescue-token",
+		"probe_types": [{
+			"name": "orphaned-probe",
+			"version": "2.0.0",
+			"description": "Rescued probe",
+			"arguments": {},
+			"executable_path": "/bin/true"
+		}]
+	}`
+	req = httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify config is no longer orphaned
+	req = httptest.NewRequest("GET", "/api/probe-configs", nil)
+	w = httptest.NewRecorder()
+
+	server.handleListProbeConfigs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list configs failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Use a fresh slice to avoid Go's JSON decoder reusing map objects
+	var configsAfter []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&configsAfter); err != nil {
+		t.Fatalf("failed to decode configs response: %v", err)
+	}
+
+	for _, cfg := range configsAfter {
+		if cfg["name"] == "Orphaned Test" {
+			if orphaned, ok := cfg["orphaned"].(bool); ok && orphaned {
+				t.Error("config should no longer be orphaned after watcher registration")
+			}
+			break
+		}
+	}
+}
+
+// TestOrphanedProbeNotDeliveredToWatcher verifies that an orphaned probe config
+// is not delivered to the watcher when it polls for configs.
+func TestOrphanedProbeNotDeliveredToWatcher(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Register a watcher first
+	registerBody := `{
+		"name": "orphan-test-watcher",
+		"version": "1.0.0",
+		"token": "orphan-watcher-token",
+		"probe_types": [{
+			"name": "active-probe",
+			"version": "1.0.0",
+			"description": "Active probe",
+			"arguments": {},
+			"executable_path": "/bin/true"
+		}]
+	}`
+	req := httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var regResp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&regResp); err != nil {
+		t.Fatalf("failed to decode registration response: %v", err)
+	}
+	watcherID := int(regResp["watcher_id"].(float64))
+
+	// Approve the watcher
+	_, err := server.db.DB().ExecContext(ctx,
+		"UPDATE watchers SET approved = 1, paused = 0 WHERE id = ?", watcherID)
+	if err != nil {
+		t.Fatalf("failed to approve watcher: %v", err)
+	}
+
+	// Get the active probe type ID
+	var activeProbeTypeID int
+	err = server.db.DB().QueryRowContext(ctx,
+		"SELECT id FROM probe_types WHERE name = 'active-probe'").Scan(&activeProbeTypeID)
+	if err != nil {
+		t.Fatalf("failed to get probe type ID: %v", err)
+	}
+
+	// Create a config for the active probe
+	_, err = server.db.DB().ExecContext(ctx, `
+		INSERT INTO probe_configs (probe_type_id, watcher_id, name, enabled, arguments, interval, timeout_seconds, notification_channels)
+		VALUES (?, ?, 'Active Probe Config', 1, '{}', '1h', 60, '[]')
+	`, activeProbeTypeID, watcherID)
+	if err != nil {
+		t.Fatalf("failed to create active probe config: %v", err)
+	}
+
+	// Create an orphaned probe type (no watcher link)
+	_, err = server.db.DB().ExecContext(ctx, `
+		INSERT INTO probe_types (name, version, description, arguments, registered_at)
+		VALUES ('orphaned-probe', '1.0.0', 'Orphaned probe', '{}', datetime('now'))
+	`)
+	if err != nil {
+		t.Fatalf("failed to create orphaned probe type: %v", err)
+	}
+
+	var orphanedProbeTypeID int
+	err = server.db.DB().QueryRowContext(ctx,
+		"SELECT id FROM probe_types WHERE name = 'orphaned-probe'").Scan(&orphanedProbeTypeID)
+	if err != nil {
+		t.Fatalf("failed to get orphaned probe type ID: %v", err)
+	}
+
+	// Create a config for the orphaned probe (assigned to the watcher)
+	_, err = server.db.DB().ExecContext(ctx, `
+		INSERT INTO probe_configs (probe_type_id, watcher_id, name, enabled, arguments, interval, timeout_seconds, notification_channels)
+		VALUES (?, ?, 'Orphaned Probe Config', 1, '{}', '1h', 60, '[]')
+	`, orphanedProbeTypeID, watcherID)
+	if err != nil {
+		t.Fatalf("failed to create orphaned probe config: %v", err)
+	}
+
+	// Now get configs for the watcher - should only return the active probe
+	req = httptest.NewRequest("GET", "/api/push/configs/orphan-test-watcher", nil)
+	req.Header.Set("Authorization", "Bearer orphan-watcher-token")
+	req.SetPathValue("watcher", "orphan-test-watcher")
+
+	// Set watcher context
+	ctx = context.WithValue(ctx, watcherIDKey, watcherID)
+	ctx = context.WithValue(ctx, watcherNameKey, "orphan-test-watcher")
+	req = req.WithContext(ctx)
+
+	w = httptest.NewRecorder()
+	server.handlePushGetConfigs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("get configs failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var configs []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&configs); err != nil {
+		t.Fatalf("failed to decode configs response: %v", err)
+	}
+
+	// Should only have the active probe config, not the orphaned one
+	if len(configs) != 1 {
+		t.Errorf("expected 1 config, got %d", len(configs))
+	}
+
+	if len(configs) > 0 && configs[0]["name"] != "Active Probe Config" {
+		t.Errorf("expected 'Active Probe Config', got %v", configs[0]["name"])
+	}
+
+	// Verify the orphaned config exists in the API with orphaned=true
+	req = httptest.NewRequest("GET", "/api/probe-configs", nil)
+	w = httptest.NewRecorder()
+
+	server.handleListProbeConfigs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list configs failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var allConfigs []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&allConfigs); err != nil {
+		t.Fatalf("failed to decode configs response: %v", err)
+	}
+
+	orphanedFound := false
+	for _, cfg := range allConfigs {
+		if cfg["name"] == "Orphaned Probe Config" {
+			orphanedFound = true
+			if orphaned, ok := cfg["orphaned"].(bool); !ok || !orphaned {
+				t.Error("expected orphaned probe config to have orphaned=true")
+			}
+		}
+	}
+
+	if !orphanedFound {
+		t.Error("orphaned probe config not found in list")
+	}
+}
+

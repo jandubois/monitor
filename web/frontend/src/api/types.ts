@@ -79,6 +79,7 @@ export interface ProbeConfig {
   last_summary?: string;
   last_message?: string;
   last_executed_at?: string;
+  orphaned?: boolean;
 }
 
 export interface ProbeResult {
