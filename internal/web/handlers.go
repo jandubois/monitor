@@ -99,13 +99,14 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 			ORDER BY pt.name, pt.version
 		`, watcherID)
 	} else {
-		// No filter - return all probe types with all watcher_ids
+		// No filter - return probe types that have at least one watcher
 		rows, err = s.db.DB().QueryContext(ctx, `
 			SELECT pt.id, pt.name, pt.description, pt.version, pt.arguments,
 			       pt.output, pt.default_interval, pt.default_name,
 			       pt.registered_at, pt.updated_at,
 			       (SELECT GROUP_CONCAT(watcher_id) FROM watcher_probe_types WHERE probe_type_id = pt.id) as watcher_ids
 			FROM probe_types pt
+			WHERE EXISTS (SELECT 1 FROM watcher_probe_types WHERE probe_type_id = pt.id)
 			ORDER BY pt.name, pt.version
 		`)
 	}

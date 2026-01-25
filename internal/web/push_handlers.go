@@ -252,6 +252,23 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 			  )
 		`, watcherID, pt.Name, probeTypeID)
 
+		// Migrate configs using old versions of this probe to the new version.
+		_, _ = s.db.DB().ExecContext(ctx, `
+			UPDATE probe_configs SET probe_type_id = ?
+			WHERE watcher_id = ?
+			  AND probe_type_id IN (
+			      SELECT id FROM probe_types WHERE name = ? AND id != ?
+			  )
+		`, probeTypeID, watcherID, pt.Name, probeTypeID)
+
+		// Delete orphaned probe_types (no watchers and no configs reference them).
+		_, _ = s.db.DB().ExecContext(ctx, `
+			DELETE FROM probe_types
+			WHERE name = ? AND id != ?
+			  AND NOT EXISTS (SELECT 1 FROM watcher_probe_types WHERE probe_type_id = probe_types.id)
+			  AND NOT EXISTS (SELECT 1 FROM probe_configs WHERE probe_type_id = probe_types.id)
+		`, pt.Name, probeTypeID)
+
 		// Generate probe version change events
 		if existingProbeVersion != nil && *existingProbeVersion != pt.Version {
 			if compareVersions(pt.Version, *existingProbeVersion) > 0 {
