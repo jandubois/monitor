@@ -454,13 +454,16 @@ func (s *Server) handlePushGetConfigs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get configs assigned to this watcher with probe type info
+	// Get configs assigned to this watcher with probe type info.
+	// Match by probe NAME (not exact probe_type_id) so configs continue working
+	// when a watcher upgrades to a newer probe version.
 	rows, err := s.db.DB().QueryContext(ctx, `
-		SELECT pc.id, pt.name, pt.version, wpt.executable_path, wpt.subcommand, pc.name, pc.arguments,
+		SELECT pc.id, pt.name, wpt_pt.version, wpt.executable_path, wpt.subcommand, pc.name, pc.arguments,
 		       pc.interval, pc.timeout_seconds, pc.next_run_at
 		FROM probe_configs pc
 		JOIN probe_types pt ON pt.id = pc.probe_type_id
-		JOIN watcher_probe_types wpt ON wpt.probe_type_id = pt.id AND wpt.watcher_id = ?
+		JOIN watcher_probe_types wpt ON wpt.watcher_id = ?
+		JOIN probe_types wpt_pt ON wpt_pt.id = wpt.probe_type_id AND wpt_pt.name = pt.name
 		WHERE pc.watcher_id = ? AND pc.enabled = 1
 	`, watcherID, watcherID)
 	if err != nil {

@@ -54,7 +54,7 @@ When invoked with `--describe`, a probe outputs its metadata as JSON:
 |-------|----------|-------------|
 | `name` | Yes | Unique probe identifier (lowercase, hyphens allowed) |
 | `description` | Yes | Human-readable summary |
-| `version` | Yes | Semantic version (e.g., "1.0.0") |
+| `version` | Yes | Semantic version (e.g., "1.0.0"). **Increment when `output` schema changes.** |
 | `arguments` | Yes | Object with `required` and/or `optional` maps |
 | `output` | No | Schema documenting expected metrics and data fields |
 | `default_interval` | No | Suggested run frequency (e.g., "1h", "5m", "1d") |
@@ -114,6 +114,21 @@ Document expected output fields so the frontend can display labels, units, and t
 |-------|----------|-------------|
 | `type` | Yes | `"string"`, `"number"`, `"boolean"`, `"array"`, or `"object"` |
 | `description` | No | Human-readable label |
+
+#### Versioning
+
+**Increment the probe version when the output schema changes.** The system treats each (name, version) combination as a distinct probe type. If you change the schema without updating the version:
+
+- Different watchers may register conflicting schemas
+- Historical results may display incorrect labels
+- UI formatting may be inconsistent
+
+Bump the version for:
+- Adding, removing, or renaming metrics or data fields
+- Changing a metric's unit or type
+- Significant changes to result format
+
+Minor documentation updates (improving descriptions) don't require a version bump.
 
 ### Execution
 

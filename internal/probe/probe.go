@@ -21,10 +21,12 @@ type Result struct {
 }
 
 // Description is the self-description format for probes.
+// The system treats (Name, Version) as a unique identifier.
+// Increment Version when Output schema changes to avoid conflicts between watchers.
 type Description struct {
 	Name            string       `json:"name"`
 	Description     string       `json:"description"`
-	Version         string       `json:"version"`
+	Version         string       `json:"version"` // Increment when Output schema changes
 	Arguments       Arguments    `json:"arguments"`
 	Output          OutputSchema `json:"output,omitempty"`           // Documents expected metrics/data fields
 	DefaultInterval string       `json:"default_interval,omitempty"` // Suggested run frequency (e.g., "1h", "5m")

@@ -45,12 +45,6 @@ export function ProbeDetail({ config: initialConfig, onBack, onConfigUpdated }: 
     enabled: showEditForm,
   });
 
-  const { data: probeTypes } = useQuery({
-    queryKey: ['probeTypes'],
-    queryFn: () => api.getProbeTypes(),
-    enabled: showEditForm,
-  });
-
   const handleSaved = async () => {
     setShowEditForm(false);
     // Refresh the config data
@@ -210,9 +204,8 @@ export function ProbeDetail({ config: initialConfig, onBack, onConfigUpdated }: 
         )}
       </div>
 
-      {showEditForm && probeTypes && watchers && (
+      {showEditForm && watchers && (
         <ProbeConfigForm
-          probeTypes={probeTypes}
           watchers={watchers}
           editingConfig={config}
           onClose={() => setShowEditForm(false)}

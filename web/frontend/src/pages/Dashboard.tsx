@@ -88,12 +88,6 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
     enabled: !!editingConfig,
   });
 
-  const { data: probeTypes } = useQuery({
-    queryKey: ['probeTypes'],
-    queryFn: () => api.getProbeTypes(),
-    enabled: !!editingConfig,
-  });
-
   // Mark a probe as running and poll for completion
   const trackRunningProbe = (id: number) => {
     setRunningProbes(prev => new Set(prev).add(id));
@@ -367,9 +361,8 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
         </div>
       )}
 
-      {editingConfig && watchers && probeTypes && (
+      {editingConfig && watchers && (
         <ProbeConfigForm
-          probeTypes={probeTypes}
           watchers={watchers}
           editingConfig={editingConfig}
           onClose={() => setEditingConfig(null)}

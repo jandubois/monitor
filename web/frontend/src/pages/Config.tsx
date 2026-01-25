@@ -243,9 +243,8 @@ export function Config({ onBack }: ConfigProps) {
       </div>
 
       {/* Form Modal */}
-      {showForm && probeTypes && watchers && (
+      {showForm && watchers && (
         <ProbeConfigForm
-          probeTypes={probeTypes}
           watchers={watchers}
           editingConfig={editingConfig}
           initialProbeTypeId={initialProbeTypeId}

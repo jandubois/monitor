@@ -1,21 +1,22 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { ProbeType, ProbeConfig, Watcher } from '../api/types';
+import type { ProbeConfig, Watcher } from '../api/types';
 
 interface ProbeConfigFormProps {
-  probeTypes: ProbeType[];
   watchers: Watcher[];
   editingConfig: ProbeConfig | null;
   initialProbeTypeId?: number;
+  initialWatcherId?: number;
   onClose: () => void;
   onSaved: () => void;
   onRerun?: (id: number) => void;
 }
 
-export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialProbeTypeId, onClose, onSaved, onRerun }: ProbeConfigFormProps) {
+export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, initialWatcherId, onClose, onSaved, onRerun }: ProbeConfigFormProps) {
   const [name, setName] = useState(editingConfig?.name ?? '');
-  const [probeTypeId, setProbeTypeId] = useState(editingConfig?.probe_type_id ?? initialProbeTypeId ?? probeTypes[0]?.id ?? 0);
-  const [watcherId, setWatcherId] = useState<number | undefined>(editingConfig?.watcher_id ?? watchers[0]?.id);
+  const [watcherId, setWatcherId] = useState<number | undefined>(editingConfig?.watcher_id ?? initialWatcherId ?? watchers[0]?.id);
+  const [probeTypeId, setProbeTypeId] = useState<number>(editingConfig?.probe_type_id ?? initialProbeTypeId ?? 0);
   const [enabled, setEnabled] = useState(editingConfig?.enabled ?? true);
   const [interval, setInterval] = useState(editingConfig?.interval ?? '5m');
   const [timeout, setTimeout] = useState(editingConfig?.timeout_seconds ?? 60);
@@ -29,7 +30,22 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // Fetch probe types for the selected watcher
+  const { data: probeTypes = [] } = useQuery({
+    queryKey: ['probeTypes', watcherId],
+    queryFn: () => api.getProbeTypes(watcherId),
+    enabled: !!watcherId,
+  });
+
   const selectedType = probeTypes.find((pt) => pt.id === probeTypeId);
+
+  // When watcher changes, reset probe type to first available (for new configs)
+  useEffect(() => {
+    if (!editingConfig && probeTypes.length > 0 && !probeTypes.find(pt => pt.id === probeTypeId)) {
+      setProbeTypeId(probeTypes[0].id);
+      setArgs({});
+    }
+  }, [editingConfig, probeTypes, probeTypeId]);
 
   // When probe type changes (for new probes), use the default_interval if available
   useEffect(() => {
