@@ -252,6 +252,11 @@ func (mw *metaWatcher) register(ctx context.Context) error {
 }
 
 func (mw *metaWatcher) check(ctx context.Context) error {
+	// Re-register to update last_seen_at (acts as heartbeat)
+	if err := mw.register(ctx); err != nil {
+		slog.Warn("re-registration failed", "error", err)
+	}
+
 	// Fetch all watchers
 	watchers, err := mw.fetchWatchers(ctx)
 	if err != nil {
