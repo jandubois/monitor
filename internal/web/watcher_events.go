@@ -122,19 +122,29 @@ func (s *Server) checkStaleWatchers(ctx context.Context, threshold time.Duration
 		slog.Error("failed to check stale watchers", "error", err)
 		return
 	}
-	defer rows.Close()
 
+	// Collect results first to avoid SQLite locking issues during iteration
+	type staleWatcher struct {
+		id         int
+		name       string
+		lastSeenAt string
+	}
+	var staleWatchers []staleWatcher
 	for rows.Next() {
-		var watcherID int
-		var name, lastSeenAt string
-		if err := rows.Scan(&watcherID, &name, &lastSeenAt); err != nil {
+		var sw staleWatcher
+		if err := rows.Scan(&sw.id, &sw.name, &sw.lastSeenAt); err != nil {
 			continue
 		}
+		staleWatchers = append(staleWatchers, sw)
+	}
+	rows.Close()
 
-		_ = s.insertWatcherEvent(ctx, watcherID, EventConnectionLost, SeverityError,
+	// Now insert events after the result set is closed
+	for _, sw := range staleWatchers {
+		_ = s.insertWatcherEvent(ctx, sw.id, EventConnectionLost, SeverityError,
 			"No heartbeat received",
 			map[string]any{
-				"last_seen_at": lastSeenAt,
+				"last_seen_at": sw.lastSeenAt,
 				"threshold":    threshold.String(),
 			})
 	}
