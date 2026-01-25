@@ -4,6 +4,18 @@
 
 Jan Dubois (GitHub: jandubois)
 
+## Writing
+
+**Before writing any prose, read the `writing-clearly-and-concisely` skill.**
+
+This applies to:
+- Commit messages
+- Documentation and README updates
+- Code comments
+- Error messages and UI text
+
+Read `elements-of-style.md` and apply its rules as you write. Key principles: use active voice, omit needless words, be specific and concrete.
+
 ## Code Quality
 
 All lint errors must be fixed before committing changes to git.
