@@ -381,6 +381,19 @@ func (s *Server) handleSetWatcherPaused(w http.ResponseWriter, r *http.Request) 
 	} else {
 		// Unpause and approve
 		result, err = s.db.DB().ExecContext(ctx, `UPDATE watchers SET paused = ?, approved = 1 WHERE id = ?`, pausedInt, id)
+
+		// Ping the watcher's health endpoint to verify it's alive and update last_seen_at
+		var callbackURL *string
+		_ = s.db.DB().QueryRowContext(ctx, `SELECT callback_url FROM watchers WHERE id = ?`, id).Scan(&callbackURL)
+		if callbackURL != nil && *callbackURL != "" {
+			healthURL := *callbackURL + "/health"
+			if resp, err := http.Get(healthURL); err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					_, _ = s.db.DB().ExecContext(ctx, `UPDATE watchers SET last_seen_at = datetime('now') WHERE id = ?`, id)
+				}
+			}
+		}
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -397,6 +410,11 @@ func (s *Server) handleSetWatcherPaused(w http.ResponseWriter, r *http.Request) 
 		slog.Info("watcher paused", "id", id)
 	} else {
 		slog.Info("watcher approved and unpaused", "id", id)
+		// Auto-acknowledge token_changed events since approval implies acknowledgment
+		_, _ = s.db.DB().ExecContext(ctx, `
+			UPDATE watcher_events SET acknowledged = 1
+			WHERE watcher_id = ? AND event_type = 'token_changed' AND acknowledged = 0
+		`, id)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]bool{"paused": req.Paused})

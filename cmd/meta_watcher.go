@@ -31,17 +31,21 @@ func init() {
 	rootCmd.AddCommand(metaWatcherCmd)
 
 	metaWatcherCmd.Flags().String("web-url", "http://localhost:8080", "Web service URL")
+	metaWatcherCmd.Flags().String("callback-url", "", "URL where web service can reach this meta-watcher (for triggers)")
+	metaWatcherCmd.Flags().Int("api-port", 8082, "Port for meta-watcher API (for triggers)")
 	metaWatcherCmd.Flags().String("token", "", "AUTH_TOKEN for privileged API access (or AUTH_TOKEN env)")
 	metaWatcherCmd.Flags().Duration("threshold", time.Minute, "Duration without heartbeat before unhealthy")
 	metaWatcherCmd.Flags().Duration("interval", 30*time.Second, "How often to check watchers")
 }
 
 type metaWatcher struct {
-	webURL    string
-	token     string
-	threshold time.Duration
-	interval  time.Duration
-	client    *http.Client
+	webURL      string
+	callbackURL string
+	apiPort     int
+	token       string
+	threshold   time.Duration
+	interval    time.Duration
+	client      *http.Client
 
 	// Registration state
 	watcherID   int
@@ -49,6 +53,9 @@ type metaWatcher struct {
 
 	// Track probe configs for each monitored watcher
 	probeConfigs map[int]int // watcher_id -> probe_config_id
+
+	// Channel for trigger requests
+	triggerCh chan int
 }
 
 type watcherInfo struct {
@@ -84,10 +91,11 @@ type probeConfig struct {
 }
 
 type registerRequest struct {
-	Name       string           `json:"name"`
-	Version    string           `json:"version"`
-	Token      string           `json:"token"`
-	ProbeTypes []registerProbe  `json:"probe_types"`
+	Name        string          `json:"name"`
+	Version     string          `json:"version"`
+	Token       string          `json:"token"`
+	CallbackURL string          `json:"callback_url,omitempty"`
+	ProbeTypes  []registerProbe `json:"probe_types"`
 }
 
 type registerProbe struct {
@@ -142,6 +150,8 @@ func runMetaWatcher(cmd *cobra.Command, args []string) error {
 	}()
 
 	webURL, _ := cmd.Flags().GetString("web-url")
+	callbackURL, _ := cmd.Flags().GetString("callback-url")
+	apiPort, _ := cmd.Flags().GetInt("api-port")
 	token, _ := cmd.Flags().GetString("token")
 	threshold, _ := cmd.Flags().GetDuration("threshold")
 	interval, _ := cmd.Flags().GetDuration("interval")
@@ -155,14 +165,22 @@ func runMetaWatcher(cmd *cobra.Command, args []string) error {
 
 	mw := &metaWatcher{
 		webURL:       webURL,
+		callbackURL:  callbackURL,
+		apiPort:      apiPort,
 		token:        token,
 		threshold:    threshold,
 		interval:     interval,
 		client:       &http.Client{Timeout: 30 * time.Second},
 		probeConfigs: make(map[int]int),
+		triggerCh:    make(chan int, 10),
 	}
 
-	slog.Info("meta-watcher starting", "web_url", webURL, "threshold", threshold, "interval", interval)
+	slog.Info("meta-watcher starting", "web_url", webURL, "callback_url", callbackURL, "threshold", threshold, "interval", interval)
+
+	// Start API server for triggers if callback URL is set
+	if callbackURL != "" {
+		go mw.runAPIServer(ctx)
+	}
 
 	// Register as a watcher
 	if err := mw.register(ctx); err != nil {
@@ -193,15 +211,67 @@ func runMetaWatcher(cmd *cobra.Command, args []string) error {
 			if err := mw.check(ctx); err != nil {
 				slog.Error("check failed", "error", err)
 			}
+		case configID := <-mw.triggerCh:
+			slog.Info("triggered check", "config_id", configID)
+			if err := mw.check(ctx); err != nil {
+				slog.Error("triggered check failed", "error", err)
+			}
 		}
+	}
+}
+
+func (mw *metaWatcher) runAPIServer(ctx context.Context) {
+	mux := http.NewServeMux()
+
+	// Trigger endpoint
+	mux.HandleFunc("POST /trigger/{id}", func(w http.ResponseWriter, r *http.Request) {
+		// Verify auth token
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer "+mw.token {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		idStr := r.PathValue("id")
+		id := 0
+		fmt.Sscanf(idStr, "%d", &id)
+
+		// Send trigger (non-blocking)
+		select {
+		case mw.triggerCh <- id:
+		default:
+			// Channel full, trigger already pending
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"triggered"}`))
+	})
+
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", mw.apiPort),
+		Handler: mux,
+	}
+
+	slog.Info("meta-watcher API listening", "addr", server.Addr)
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		server.Shutdown(shutdownCtx)
+	}()
+
+	if err := server.ListenAndServe(); err != http.ErrServerClosed {
+		slog.Error("API server error", "error", err)
 	}
 }
 
 func (mw *metaWatcher) register(ctx context.Context) error {
 	req := registerRequest{
-		Name:    "meta-watcher",
-		Version: "1.0.0",
-		Token:   mw.token,
+		Name:        "meta-watcher",
+		Version:     "1.0.0",
+		Token:       mw.token,
+		CallbackURL: mw.callbackURL,
 		ProbeTypes: []registerProbe{
 			{
 				Name:            "watcher-health",

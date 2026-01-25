@@ -62,16 +62,23 @@ export function WatchersGroup() {
         // Ignore errors - probes will run on schedule anyway
       }
     }
-    // Refresh probe configs to get updated status
+    // Refresh queries after probes complete
     setTimeout(() => {
       queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+      queryClient.invalidateQueries({ queryKey: ['watchers'] });
+      queryClient.invalidateQueries({ queryKey: ['status'] });
     }, 2000);
   };
 
   const pauseWatcherMutation = useMutation({
     mutationFn: ({ id, paused }: { id: number; paused: boolean }) => api.setWatcherPaused(id, paused),
-    onSuccess: () => {
+    onSuccess: (_data, { paused }) => {
       queryClient.invalidateQueries({ queryKey: ['watchers'] });
+      queryClient.invalidateQueries({ queryKey: ['status'] });
+      if (!paused) {
+        // Approval auto-acknowledges token_changed events, so refresh the events list
+        queryClient.invalidateQueries({ queryKey: ['watcherEvents'] });
+      }
       // Trigger watcher-health probes to update status immediately
       triggerWatcherHealthProbes();
     },
@@ -151,9 +158,11 @@ export function WatchersGroup() {
                   </button>
                   <span className="font-medium">{w.name}</span>
                   {w.version && <span className="text-gray-400 text-sm">v{w.version}</span>}
-                  <span className={`text-xs px-2 py-0.5 rounded ${w.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {w.healthy ? 'healthy' : 'unhealthy'}
-                  </span>
+                  {w.approved && (
+                    <span className={`text-xs px-2 py-0.5 rounded ${w.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {w.healthy ? 'healthy' : 'unhealthy'}
+                    </span>
+                  )}
                   {!w.approved && (
                     <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">
                       pending approval

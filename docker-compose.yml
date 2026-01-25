@@ -52,7 +52,7 @@ services:
       context: .
       args:
         VERSION: ${VERSION:-dev}
-    command: ["meta-watcher", "--web-url=http://web:8080", "--threshold=1m", "--interval=30s"]
+    command: ["meta-watcher", "--web-url=http://web:8080", "--callback-url=http://meta-watcher:8082", "--threshold=1m", "--interval=30s"]
     environment:
       AUTH_TOKEN: ${AUTH_TOKEN:-changeme}
     depends_on:

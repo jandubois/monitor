@@ -158,6 +158,13 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.deleteProbeConfig(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+    },
+  });
+
   // Filter by keyword, then sort, then group
   const filteredConfigs = configs?.filter(config => {
     if (!keywordFilter.trim()) return true;
@@ -362,6 +369,11 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
                           id: config.id,
                           enabled: !config.enabled,
                         })}
+                        onDelete={() => {
+                          if (confirm(`Delete probe "${config.name}"?`)) {
+                            deleteMutation.mutate(config.id);
+                          }
+                        }}
                       />
                     ))}
                   </div>

@@ -3,12 +3,14 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jandubois/monitor/internal/config"
 	"github.com/jandubois/monitor/internal/db"
@@ -1170,6 +1172,147 @@ func TestOrphanedProbeNotDeliveredToWatcher(t *testing.T) {
 
 	if !orphanedFound {
 		t.Error("orphaned probe config not found in list")
+	}
+}
+
+// TestWatcherApprovalFlow tests the complete watcher approval flow:
+// 1. Register watcher, then re-register with new token (creates token_changed event)
+// 2. Verify watcher is unapproved with unacknowledged events
+// 3. Approve watcher (should auto-acknowledge token_changed events and update last_seen_at)
+// 4. Verify events are acknowledged and watcher is healthy
+func TestWatcherApprovalFlow(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Create a mock watcher health endpoint
+	mockWatcher := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"ok"}`))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer mockWatcher.Close()
+
+	// Register a watcher with callback URL
+	registerBody := fmt.Sprintf(`{
+		"name": "approval-test-watcher",
+		"version": "1.0.0",
+		"token": "token-v1",
+		"callback_url": %q,
+		"probe_types": []
+	}`, mockWatcher.URL)
+	req := httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	server.handlePushRegister(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var regResp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&regResp); err != nil {
+		t.Fatalf("failed to decode registration response: %v", err)
+	}
+	watcherID := int(regResp["watcher_id"].(float64))
+
+	// Re-register with a different token to trigger token_changed event
+	registerBody = fmt.Sprintf(`{
+		"name": "approval-test-watcher",
+		"version": "1.0.0",
+		"token": "token-v2",
+		"callback_url": %q,
+		"probe_types": []
+	}`, mockWatcher.URL)
+	req = httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	server.handlePushRegister(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("re-registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify watcher is not approved
+	var approved int
+	err := server.db.DB().QueryRowContext(ctx, `SELECT approved FROM watchers WHERE id = ?`, watcherID).Scan(&approved)
+	if err != nil {
+		t.Fatalf("failed to query watcher: %v", err)
+	}
+	if approved != 0 {
+		t.Error("expected watcher to be unapproved after token change")
+	}
+
+	// Verify there are unacknowledged token_changed events
+	var unackCount int
+	err = server.db.DB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM watcher_events
+		WHERE watcher_id = ? AND event_type = 'token_changed' AND acknowledged = 0
+	`, watcherID).Scan(&unackCount)
+	if err != nil {
+		t.Fatalf("failed to count events: %v", err)
+	}
+	if unackCount == 0 {
+		t.Error("expected unacknowledged token_changed event after re-registration")
+	}
+
+	// Set last_seen_at to an old time to verify it gets updated on approval
+	_, err = server.db.DB().ExecContext(ctx, `
+		UPDATE watchers SET last_seen_at = datetime('now', '-1 hour') WHERE id = ?
+	`, watcherID)
+	if err != nil {
+		t.Fatalf("failed to update last_seen_at: %v", err)
+	}
+
+	// Approve the watcher
+	approveBody := `{"paused": false}`
+	req = httptest.NewRequest("PUT", "/api/watchers/"+strconv.Itoa(watcherID)+"/paused", strings.NewReader(approveBody))
+	req.SetPathValue("id", strconv.Itoa(watcherID))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	server.handleSetWatcherPaused(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("approval failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify watcher is now approved
+	err = server.db.DB().QueryRowContext(ctx, `SELECT approved FROM watchers WHERE id = ?`, watcherID).Scan(&approved)
+	if err != nil {
+		t.Fatalf("failed to query watcher after approval: %v", err)
+	}
+	if approved != 1 {
+		t.Error("expected watcher to be approved after approval")
+	}
+
+	// Verify token_changed events are now acknowledged
+	err = server.db.DB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM watcher_events
+		WHERE watcher_id = ? AND event_type = 'token_changed' AND acknowledged = 0
+	`, watcherID).Scan(&unackCount)
+	if err != nil {
+		t.Fatalf("failed to count events after approval: %v", err)
+	}
+	if unackCount != 0 {
+		t.Errorf("expected token_changed events to be auto-acknowledged, but found %d unacknowledged", unackCount)
+	}
+
+	// Verify last_seen_at was updated (watcher should be healthy)
+	var lastSeenAtStr string
+	err = server.db.DB().QueryRowContext(ctx, `SELECT last_seen_at FROM watchers WHERE id = ?`, watcherID).Scan(&lastSeenAtStr)
+	if err != nil {
+		t.Fatalf("failed to query last_seen_at: %v", err)
+	}
+	lastSeenAt, err := time.Parse("2006-01-02 15:04:05", lastSeenAtStr)
+	if err != nil {
+		t.Fatalf("failed to parse last_seen_at: %v", err)
+	}
+	if time.Since(lastSeenAt) > 5*time.Second {
+		t.Errorf("expected last_seen_at to be recent (within 5s), but it was %v ago", time.Since(lastSeenAt))
 	}
 }
 
