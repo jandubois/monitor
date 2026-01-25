@@ -193,6 +193,16 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Error("failed to link probe type to watcher", "watcher", req.Name, "probe", pt.Name, "error", err)
 		}
+
+		// Remove old versions of this probe from the watcher.
+		// When a watcher upgrades a probe, we only want the new version registered.
+		_, _ = s.db.DB().ExecContext(ctx, `
+			DELETE FROM watcher_probe_types
+			WHERE watcher_id = ?
+			  AND probe_type_id IN (
+			      SELECT id FROM probe_types WHERE name = ? AND id != ?
+			  )
+		`, watcherID, pt.Name, probeTypeID)
 	}
 
 	slog.Info("watcher registered", "name", req.Name, "version", req.Version, "probe_types", len(req.ProbeTypes), "approved", approved != 0)

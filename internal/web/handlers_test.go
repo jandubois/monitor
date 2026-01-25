@@ -416,3 +416,160 @@ func TestHandleCreateAndDeleteNotificationChannel(t *testing.T) {
 	}
 }
 
+// TestProbeVersionUpgrade verifies that probe configs continue working
+// when a watcher upgrades to a newer probe version.
+func TestProbeVersionUpgrade(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Step 1: Register a watcher with probe type v1.0.0
+	registerBody := `{
+		"name": "test-watcher",
+		"version": "1.0.0",
+		"token": "watcher-token",
+		"probe_types": [{
+			"name": "test-probe",
+			"version": "1.0.0",
+			"description": "Test probe v1",
+			"arguments": {},
+			"executable_path": "/bin/true"
+		}]
+	}`
+	req := httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var regResp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&regResp); err != nil {
+		t.Fatalf("failed to decode registration response: %v", err)
+	}
+
+	watcherID := int(regResp["watcher_id"].(float64))
+
+	// Step 2: Approve the watcher
+	_, err := server.db.DB().ExecContext(ctx,
+		"UPDATE watchers SET approved = 1, paused = 0 WHERE id = ?", watcherID)
+	if err != nil {
+		t.Fatalf("failed to approve watcher: %v", err)
+	}
+
+	// Step 3: Get the probe type ID
+	var probeTypeID int
+	err = server.db.DB().QueryRowContext(ctx,
+		"SELECT id FROM probe_types WHERE name = 'test-probe' AND version = '1.0.0'").Scan(&probeTypeID)
+	if err != nil {
+		t.Fatalf("failed to get probe type ID: %v", err)
+	}
+
+	// Step 4: Create a probe config using v1.0.0
+	createConfigBody := `{
+		"probe_type_id": ` + strconv.Itoa(probeTypeID) + `,
+		"watcher_id": ` + strconv.Itoa(watcherID) + `,
+		"name": "test-config",
+		"enabled": true,
+		"arguments": {},
+		"interval": "1h",
+		"timeout_seconds": 30
+	}`
+	req = httptest.NewRequest("POST", "/api/probe-configs", strings.NewReader(createConfigBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+
+	server.handleCreateProbeConfig(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("config creation failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var configResp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&configResp); err != nil {
+		t.Fatalf("failed to decode config response: %v", err)
+	}
+	configID := int(configResp["id"].(float64))
+
+	// Step 5: Re-register the watcher with probe type v1.1.0 (simulating upgrade)
+	upgradeBody := `{
+		"name": "test-watcher",
+		"version": "1.0.0",
+		"token": "watcher-token",
+		"probe_types": [{
+			"name": "test-probe",
+			"version": "1.1.0",
+			"description": "Test probe v1.1 with new features",
+			"arguments": {},
+			"executable_path": "/bin/true-v1.1"
+		}]
+	}`
+	req = httptest.NewRequest("POST", "/api/push/register", strings.NewReader(upgradeBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("re-registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Step 6: Fetch configs for the watcher - should still return the config
+	// with the upgraded version
+	req = httptest.NewRequest("GET", "/api/push/configs/test-watcher", nil)
+	req.Header.Set("Authorization", "Bearer watcher-token")
+	req.SetPathValue("watcher", "test-watcher")
+
+	// Set watcher context (normally done by middleware)
+	ctx = context.WithValue(ctx, watcherIDKey, watcherID)
+	ctx = context.WithValue(ctx, watcherNameKey, "test-watcher")
+	req = req.WithContext(ctx)
+
+	w = httptest.NewRecorder()
+
+	server.handlePushGetConfigs(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("get configs failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var configs []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&configs); err != nil {
+		t.Fatalf("failed to decode configs response: %v", err)
+	}
+
+	// Verify the config is returned
+	if len(configs) != 1 {
+		t.Fatalf("expected 1 config, got %d", len(configs))
+	}
+
+	cfg := configs[0]
+
+	// Verify config ID matches
+	if int(cfg["id"].(float64)) != configID {
+		t.Errorf("expected config ID %d, got %v", configID, cfg["id"])
+	}
+
+	// Verify the probe name is correct
+	if cfg["probe_type_name"] != "test-probe" {
+		t.Errorf("expected probe_type_name 'test-probe', got %v", cfg["probe_type_name"])
+	}
+
+	// KEY CHECK: Verify the version is the NEW version (v1.1.0), not the original
+	if cfg["probe_version"] != "1.1.0" {
+		t.Errorf("expected probe_version '1.1.0' (upgraded), got %v", cfg["probe_version"])
+	}
+
+	// Verify the executable path is the new one
+	if cfg["executable_path"] != "/bin/true-v1.1" {
+		t.Errorf("expected executable_path '/bin/true-v1.1', got %v", cfg["executable_path"])
+	}
+}
+
