@@ -56,6 +56,7 @@ func testServer(t *testing.T) (*Server, func()) {
 		_, _ = database.DB().ExecContext(ctx, "DELETE FROM probe_configs")
 		_, _ = database.DB().ExecContext(ctx, "DELETE FROM watcher_probe_types")
 		_, _ = database.DB().ExecContext(ctx, "DELETE FROM probe_types")
+		_, _ = database.DB().ExecContext(ctx, "DELETE FROM watcher_events")
 		_, _ = database.DB().ExecContext(ctx, "DELETE FROM watchers")
 		_, _ = database.DB().ExecContext(ctx, "DELETE FROM notification_channels")
 		_ = database.Close()
@@ -570,6 +571,340 @@ func TestProbeVersionUpgrade(t *testing.T) {
 	// Verify the executable path is the new one
 	if cfg["executable_path"] != "/bin/true-v1.1" {
 		t.Errorf("expected executable_path '/bin/true-v1.1', got %v", cfg["executable_path"])
+	}
+}
+
+// TestWatcherEventRegistered verifies that a 'registered' event is created
+// when a new watcher registers.
+func TestWatcherEventRegistered(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	// Register a new watcher
+	registerBody := `{
+		"name": "new-watcher",
+		"version": "1.0.0",
+		"token": "new-watcher-token",
+		"probe_types": [{
+			"name": "test-probe",
+			"version": "1.0.0",
+			"description": "Test probe",
+			"arguments": {},
+			"executable_path": "/bin/true"
+		}]
+	}`
+	req := httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var regResp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&regResp); err != nil {
+		t.Fatalf("failed to decode registration response: %v", err)
+	}
+
+	watcherID := int(regResp["watcher_id"].(float64))
+
+	// Check that a 'registered' event was created
+	req = httptest.NewRequest("GET", "/api/watcher-events?watcher_id="+strconv.Itoa(watcherID), nil)
+	w = httptest.NewRecorder()
+
+	server.handleListWatcherEvents(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list events failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var events []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&events); err != nil {
+		t.Fatalf("failed to decode events response: %v", err)
+	}
+
+	// Find the 'registered' event
+	found := false
+	for _, e := range events {
+		if e["event_type"] == "registered" {
+			found = true
+			if e["severity"] != "info" {
+				t.Errorf("expected severity 'info', got %v", e["severity"])
+			}
+			break
+		}
+	}
+
+	if !found {
+		t.Errorf("expected 'registered' event, got %v", events)
+	}
+}
+
+// TestWatcherEventProbeVersionUpgrade verifies that a 'probe_version_upgrade'
+// event is created when a probe version increases.
+func TestWatcherEventProbeVersionUpgrade(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	// Step 1: Register watcher with probe v1.0.0
+	registerBody := `{
+		"name": "upgrade-watcher",
+		"version": "1.0.0",
+		"token": "upgrade-token",
+		"probe_types": [{
+			"name": "versioned-probe",
+			"version": "1.0.0",
+			"description": "Test probe v1",
+			"arguments": {},
+			"executable_path": "/bin/true"
+		}]
+	}`
+	req := httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var regResp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&regResp); err != nil {
+		t.Fatalf("failed to decode registration response: %v", err)
+	}
+	watcherID := int(regResp["watcher_id"].(float64))
+
+	// Step 2: Re-register with probe v1.1.0 (upgrade)
+	upgradeBody := `{
+		"name": "upgrade-watcher",
+		"version": "1.0.0",
+		"token": "upgrade-token",
+		"probe_types": [{
+			"name": "versioned-probe",
+			"version": "1.1.0",
+			"description": "Test probe v1.1",
+			"arguments": {},
+			"executable_path": "/bin/true"
+		}]
+	}`
+	req = httptest.NewRequest("POST", "/api/push/register", strings.NewReader(upgradeBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("upgrade registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Step 3: Check for 'probe_version_upgrade' event
+	req = httptest.NewRequest("GET", "/api/watcher-events?watcher_id="+strconv.Itoa(watcherID)+"&type=probe_version_upgrade", nil)
+	w = httptest.NewRecorder()
+
+	server.handleListWatcherEvents(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list events failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var events []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&events); err != nil {
+		t.Fatalf("failed to decode events response: %v", err)
+	}
+
+	if len(events) == 0 {
+		t.Fatal("expected 'probe_version_upgrade' event, got none")
+	}
+
+	event := events[0]
+	if event["severity"] != "info" {
+		t.Errorf("expected severity 'info', got %v", event["severity"])
+	}
+
+	// Check the summary contains version info
+	summary := event["summary"].(string)
+	if !strings.Contains(summary, "1.0.0") || !strings.Contains(summary, "1.1.0") {
+		t.Errorf("expected summary to mention version change, got %q", summary)
+	}
+}
+
+// TestWatcherEventProbeVersionDowngrade verifies that a 'probe_version_downgrade'
+// event is created when a probe version decreases.
+func TestWatcherEventProbeVersionDowngrade(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	// Step 1: Register watcher with probe v2.0.0
+	registerBody := `{
+		"name": "downgrade-watcher",
+		"version": "1.0.0",
+		"token": "downgrade-token",
+		"probe_types": [{
+			"name": "versioned-probe",
+			"version": "2.0.0",
+			"description": "Test probe v2",
+			"arguments": {},
+			"executable_path": "/bin/true"
+		}]
+	}`
+	req := httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var regResp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&regResp); err != nil {
+		t.Fatalf("failed to decode registration response: %v", err)
+	}
+	watcherID := int(regResp["watcher_id"].(float64))
+
+	// Step 2: Re-register with probe v1.0.0 (downgrade)
+	downgradeBody := `{
+		"name": "downgrade-watcher",
+		"version": "1.0.0",
+		"token": "downgrade-token",
+		"probe_types": [{
+			"name": "versioned-probe",
+			"version": "1.0.0",
+			"description": "Test probe v1",
+			"arguments": {},
+			"executable_path": "/bin/true"
+		}]
+	}`
+	req = httptest.NewRequest("POST", "/api/push/register", strings.NewReader(downgradeBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("downgrade registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Step 3: Check for 'probe_version_downgrade' event
+	req = httptest.NewRequest("GET", "/api/watcher-events?watcher_id="+strconv.Itoa(watcherID)+"&type=probe_version_downgrade", nil)
+	w = httptest.NewRecorder()
+
+	server.handleListWatcherEvents(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list events failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var events []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&events); err != nil {
+		t.Fatalf("failed to decode events response: %v", err)
+	}
+
+	if len(events) == 0 {
+		t.Fatal("expected 'probe_version_downgrade' event, got none")
+	}
+
+	event := events[0]
+	if event["severity"] != "warning" {
+		t.Errorf("expected severity 'warning', got %v", event["severity"])
+	}
+}
+
+// TestWatcherEventAcknowledge verifies that events can be acknowledged.
+func TestWatcherEventAcknowledge(t *testing.T) {
+	server, cleanup := testServer(t)
+	if server == nil {
+		return
+	}
+	defer cleanup()
+
+	// Register a watcher to create a 'registered' event
+	registerBody := `{
+		"name": "ack-watcher",
+		"version": "1.0.0",
+		"token": "ack-token",
+		"probe_types": []
+	}`
+	req := httptest.NewRequest("POST", "/api/push/register", strings.NewReader(registerBody))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	server.handlePushRegister(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("registration failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Get the event
+	req = httptest.NewRequest("GET", "/api/watcher-events?type=registered", nil)
+	w = httptest.NewRecorder()
+
+	server.handleListWatcherEvents(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list events failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var events []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&events); err != nil {
+		t.Fatalf("failed to decode events response: %v", err)
+	}
+
+	if len(events) == 0 {
+		t.Fatal("expected at least one event")
+	}
+
+	eventID := int(events[0]["id"].(float64))
+
+	// Verify it's not acknowledged
+	if events[0]["acknowledged"].(bool) {
+		t.Error("expected event to be unacknowledged initially")
+	}
+
+	// Acknowledge the event
+	req = httptest.NewRequest("PUT", "/api/watcher-events/"+strconv.Itoa(eventID)+"/acknowledge", nil)
+	req.SetPathValue("id", strconv.Itoa(eventID))
+	w = httptest.NewRecorder()
+
+	server.handleAcknowledgeWatcherEvent(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("acknowledge failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	// Verify unacknowledged filter excludes it
+	req = httptest.NewRequest("GET", "/api/watcher-events?unacknowledged=true&type=registered", nil)
+	w = httptest.NewRecorder()
+
+	server.handleListWatcherEvents(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("list events failed: %d: %s", w.Code, w.Body.String())
+	}
+
+	var unackEvents []map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&unackEvents); err != nil {
+		t.Fatalf("failed to decode events response: %v", err)
+	}
+
+	// The acknowledged event should be excluded
+	for _, e := range unackEvents {
+		if int(e["id"].(float64)) == eventID {
+			t.Error("acknowledged event should be excluded from unacknowledged filter")
+		}
 	}
 }
 
