@@ -175,7 +175,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create plist file: %w", err)
 	}
-	defer func() { _ = f.Close() }()
+	defer f.Close()
 
 	if err := tmpl.Execute(f, data); err != nil {
 		return fmt.Errorf("failed to write plist: %w", err)

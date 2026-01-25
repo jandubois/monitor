@@ -71,7 +71,7 @@ func (p *PushoverChannel) Send(ctx context.Context, msg *Message) error {
 	if err != nil {
 		return fmt.Errorf("send request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("pushover returned status %d", resp.StatusCode)

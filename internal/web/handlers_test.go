@@ -46,7 +46,7 @@ func testServer(t *testing.T) (*Server, func()) {
 
 	server, err := NewServer(database, cfg)
 	if err != nil {
-		_ = database.Close()
+		database.Close()
 		t.Fatalf("failed to create server: %v", err)
 	}
 
@@ -59,7 +59,7 @@ func testServer(t *testing.T) (*Server, func()) {
 		_, _ = database.DB().ExecContext(ctx, "DELETE FROM watcher_events")
 		_, _ = database.DB().ExecContext(ctx, "DELETE FROM watchers")
 		_, _ = database.DB().ExecContext(ctx, "DELETE FROM notification_channels")
-		_ = database.Close()
+		database.Close()
 	}
 
 	return server, cleanup

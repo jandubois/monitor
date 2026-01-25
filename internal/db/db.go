@@ -37,7 +37,7 @@ func Connect(ctx context.Context, dbPath string) (*DB, error) {
 	db.SetMaxOpenConns(1)
 
 	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
+		db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 

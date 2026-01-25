@@ -67,7 +67,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
 	}
-	defer func() { _ = database.Close() }()
+	defer database.Close()
 
 	cfg := &config.WebConfig{
 		Name:                name,

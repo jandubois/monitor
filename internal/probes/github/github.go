@@ -185,7 +185,7 @@ func getLastCommit(repo, branch, token string) (*Commit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get branch: %w", err)
 	}
-	defer func() { _ = branchResp.Body.Close() }()
+	defer branchResp.Body.Close()
 
 	if branchResp.StatusCode != 200 {
 		return nil, fmt.Errorf("branch request failed: %s", branchResp.Status)
@@ -201,7 +201,7 @@ func getLastCommit(repo, branch, token string) (*Commit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get commit: %w", err)
 	}
-	defer func() { _ = commitResp.Body.Close() }()
+	defer commitResp.Body.Close()
 
 	if commitResp.StatusCode != 200 {
 		return nil, fmt.Errorf("commit request failed: %s", commitResp.Status)

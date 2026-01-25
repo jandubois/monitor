@@ -27,7 +27,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	var watchers []map[string]any
 	allHealthy := true
@@ -110,7 +110,7 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	var probeTypes []map[string]any
 	for rows.Next() {
@@ -197,7 +197,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	var watchers []map[string]any
 	for rows.Next() {
@@ -273,7 +273,7 @@ func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = ptRows.Close() }()
+	defer ptRows.Close()
 
 	var probeTypes []map[string]any
 	for ptRows.Next() {
@@ -432,7 +432,7 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	var configs []map[string]any
 	for rows.Next() {
@@ -715,7 +715,7 @@ func (s *Server) handleRunProbeConfig(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Warn("failed to trigger watcher directly, falling back to poll", "error", err)
 		} else {
-			_ = resp.Body.Close()
+			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				w.Header().Set("Content-Type", "application/json")
 				_ = json.NewEncoder(w).Encode(map[string]string{"status": "triggered"})
@@ -780,7 +780,7 @@ func (s *Server) handleSetProbeEnabled(w http.ResponseWriter, r *http.Request) {
 			triggerReq, _ := http.NewRequestWithContext(ctx, "POST", triggerURL, nil)
 			triggerReq.Header.Set("Authorization", "Bearer "+s.config.AuthToken)
 			if resp, err := http.DefaultClient.Do(triggerReq); err == nil {
-				_ = resp.Body.Close()
+				resp.Body.Close()
 			}
 		} else {
 			// Fall back to poll-based trigger
@@ -845,7 +845,7 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	var results []map[string]any
 	for rows.Next() {
@@ -911,7 +911,7 @@ func (s *Server) handleGetResults(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	var results []map[string]any
 	for rows.Next() {
@@ -1006,7 +1006,7 @@ func (s *Server) handleListNotificationChannels(w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer func() { _ = rows.Close() }()
+	defer rows.Close()
 
 	var channels []map[string]any
 	for rows.Next() {
