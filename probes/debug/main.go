@@ -37,7 +37,7 @@ func main() {
 	describe := flag.Bool("describe", false, "Print probe description")
 	mode := flag.String("mode", "ok", "Behavior mode: ok, warning, critical, timeout, crash, error")
 	message := flag.String("message", "", "Custom message (optional)")
-	delayMs := flag.Int("delay_ms", 0, "Delay before responding in milliseconds")
+	delayMs := flag.Int("delay-ms", 0, "Delay before responding in milliseconds")
 	flag.Parse()
 
 	if *describe {

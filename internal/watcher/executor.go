@@ -148,9 +148,10 @@ func (e *Executor) runProbe(ctx context.Context, cfg *ProbeConfig) (*probe.Resul
 func buildArgs(arguments map[string]any) []string {
 	var args []string
 	for key, value := range arguments {
-		// Use --key=value format for boolean flags (Go's flag package requires this)
-		// Also use it for all other types for consistency
-		args = append(args, fmt.Sprintf("--%s=%v", key, value))
+		// Convert underscores to dashes for CLI convention
+		// JSON schema uses underscores, CLI uses dashes
+		cliKey := strings.ReplaceAll(key, "_", "-")
+		args = append(args, fmt.Sprintf("--%s=%v", cliKey, value))
 	}
 	return args
 }

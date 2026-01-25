@@ -36,8 +36,8 @@ type Result struct {
 func main() {
 	describe := flag.Bool("describe", false, "Print probe description")
 	path := flag.String("path", "", "Path to check")
-	minFreeGB := flag.Float64("min_free_gb", 10, "Minimum free gigabytes")
-	minFreePercent := flag.Float64("min_free_percent", 0, "Minimum free percentage")
+	minFreeGB := flag.Float64("min-free-gb", 10, "Minimum free gigabytes")
+	minFreePercent := flag.Float64("min-free-percent", 0, "Minimum free percentage")
 	flag.Parse()
 
 	if *describe {

@@ -24,8 +24,8 @@ var diskSpaceCmd = &cobra.Command{
 	Short: "Check available disk space on a path",
 	Run: func(cmd *cobra.Command, args []string) {
 		path, _ := cmd.Flags().GetString("path")
-		minFreeGB, _ := cmd.Flags().GetFloat64("min_free_gb")
-		minFreePercent, _ := cmd.Flags().GetFloat64("min_free_percent")
+		minFreeGB, _ := cmd.Flags().GetFloat64("min-free-gb")
+		minFreePercent, _ := cmd.Flags().GetFloat64("min-free-percent")
 
 		result := diskspace.Run(path, minFreeGB, minFreePercent)
 		outputResult(result)
@@ -39,9 +39,9 @@ var commandCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cmdStr, _ := cmd.Flags().GetString("command")
 		shell, _ := cmd.Flags().GetString("shell")
-		okCodes, _ := cmd.Flags().GetString("ok_codes")
-		warningCodes, _ := cmd.Flags().GetString("warning_codes")
-		captureOutput, _ := cmd.Flags().GetBool("capture_output")
+		okCodes, _ := cmd.Flags().GetString("ok-codes")
+		warningCodes, _ := cmd.Flags().GetString("warning-codes")
+		captureOutput, _ := cmd.Flags().GetBool("capture-output")
 
 		result := command.Run(cmdStr, shell, okCodes, warningCodes, captureOutput)
 		outputResult(result)
@@ -55,7 +55,7 @@ var debugCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		mode, _ := cmd.Flags().GetString("mode")
 		message, _ := cmd.Flags().GetString("message")
-		delayMs, _ := cmd.Flags().GetInt("delay_ms")
+		delayMs, _ := cmd.Flags().GetInt("delay-ms")
 
 		result := debug.Run(mode, message, delayMs)
 		outputResult(result)
@@ -69,9 +69,9 @@ var githubCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		repo, _ := cmd.Flags().GetString("repo")
 		branch, _ := cmd.Flags().GetString("branch")
-		maxAgeHours, _ := cmd.Flags().GetInt("max_age_hours")
-		minFiles, _ := cmd.Flags().GetInt("min_files")
-		minAdditions, _ := cmd.Flags().GetInt("min_additions")
+		maxAgeHours, _ := cmd.Flags().GetInt("max-age-hours")
+		minFiles, _ := cmd.Flags().GetInt("min-files")
+		minAdditions, _ := cmd.Flags().GetInt("min-additions")
 
 		token := getGitHubToken()
 
@@ -86,9 +86,9 @@ var gitStatusCmd = &cobra.Command{
 	Short: "Check git repositories for uncommitted changes and unpushed commits",
 	Run: func(cmd *cobra.Command, args []string) {
 		path, _ := cmd.Flags().GetString("path")
-		uncommittedHours, _ := cmd.Flags().GetFloat64("uncommitted_hours")
-		unpushedHours, _ := cmd.Flags().GetFloat64("unpushed_hours")
-		excludeAIFiles, _ := cmd.Flags().GetBool("exclude_ai_files")
+		uncommittedHours, _ := cmd.Flags().GetFloat64("uncommitted-hours")
+		unpushedHours, _ := cmd.Flags().GetFloat64("unpushed-hours")
+		excludeAIFiles, _ := cmd.Flags().GetBool("exclude-ai-files")
 
 		result := gitstatus.Run(path, uncommittedHours, unpushedHours, excludeAIFiles)
 		outputResult(result)
@@ -127,33 +127,33 @@ func init() {
 
 	// disk-space flags
 	diskSpaceCmd.Flags().String("path", "", "Path to check")
-	diskSpaceCmd.Flags().Float64("min_free_gb", 10, "Minimum free gigabytes")
-	diskSpaceCmd.Flags().Float64("min_free_percent", 0, "Minimum free percentage (0-100)")
+	diskSpaceCmd.Flags().Float64("min-free-gb", 10, "Minimum free gigabytes")
+	diskSpaceCmd.Flags().Float64("min-free-percent", 0, "Minimum free percentage (0-100)")
 
 	// command flags
 	commandCmd.Flags().String("command", "", "Command to run")
 	commandCmd.Flags().String("shell", "/bin/sh", "Shell to use for execution")
-	commandCmd.Flags().String("ok_codes", "0", "Comma-separated exit codes that indicate success")
-	commandCmd.Flags().String("warning_codes", "", "Comma-separated exit codes that indicate warning")
-	commandCmd.Flags().Bool("capture_output", true, "Include command output in result data")
+	commandCmd.Flags().String("ok-codes", "0", "Comma-separated exit codes that indicate success")
+	commandCmd.Flags().String("warning-codes", "", "Comma-separated exit codes that indicate warning")
+	commandCmd.Flags().Bool("capture-output", true, "Include command output in result data")
 
 	// debug flags
 	debugCmd.Flags().String("mode", "ok", "Probe behavior mode")
 	debugCmd.Flags().String("message", "", "Custom message to return")
-	debugCmd.Flags().Int("delay_ms", 0, "Delay before responding (milliseconds)")
+	debugCmd.Flags().Int("delay-ms", 0, "Delay before responding (milliseconds)")
 
 	// github flags
 	githubCmd.Flags().String("repo", "", "Repository (owner/name)")
 	githubCmd.Flags().String("branch", "main", "Branch name")
-	githubCmd.Flags().Int("max_age_hours", 24, "Maximum commit age in hours (0 to disable)")
-	githubCmd.Flags().Int("min_files", 0, "Minimum changed files (0 to disable)")
-	githubCmd.Flags().Int("min_additions", 0, "Minimum added lines (0 to disable)")
+	githubCmd.Flags().Int("max-age-hours", 24, "Maximum commit age in hours (0 to disable)")
+	githubCmd.Flags().Int("min-files", 0, "Minimum changed files (0 to disable)")
+	githubCmd.Flags().Int("min-additions", 0, "Minimum added lines (0 to disable)")
 
 	// git-status flags
 	gitStatusCmd.Flags().String("path", "", "Directory to scan for git repositories")
-	gitStatusCmd.Flags().Float64("uncommitted_hours", 1, "Hours after which uncommitted changes are a failure")
-	gitStatusCmd.Flags().Float64("unpushed_hours", 4, "Hours after which unpushed commits are a failure")
-	gitStatusCmd.Flags().Bool("exclude_ai_files", false, "Exclude AI agent files from uncommitted changes check")
+	gitStatusCmd.Flags().Float64("uncommitted-hours", 1, "Hours after which uncommitted changes are a failure")
+	gitStatusCmd.Flags().Float64("unpushed-hours", 4, "Hours after which unpushed commits are a failure")
+	gitStatusCmd.Flags().Bool("exclude-ai-files", false, "Exclude AI agent files from uncommitted changes check")
 }
 
 func printDescriptions() {

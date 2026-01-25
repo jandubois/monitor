@@ -42,7 +42,7 @@ type RepoIssue struct {
 	Warning bool     `json:"warning,omitempty"`
 }
 
-// AI agent file patterns to exclude when exclude_ai_files is enabled
+// AI agent file patterns to exclude when exclude-ai-files is enabled
 var aiFilePatterns = []string{
 	"CLAUDE.md",
 	"AGENTS.md",
@@ -56,9 +56,9 @@ var aiFilePatterns = []string{
 func main() {
 	describe := flag.Bool("describe", false, "Print probe description")
 	path := flag.String("path", "", "Directory to scan for git repositories")
-	uncommittedHours := flag.Float64("uncommitted_hours", 1, "Hours after which uncommitted changes are a failure")
-	unpushedHours := flag.Float64("unpushed_hours", 4, "Hours after which unpushed commits are a failure")
-	excludeAIFiles := flag.Bool("exclude_ai_files", false, "Exclude AI agent files from uncommitted changes check")
+	uncommittedHours := flag.Float64("uncommitted-hours", 1, "Hours after which uncommitted changes are a failure")
+	unpushedHours := flag.Float64("unpushed-hours", 4, "Hours after which unpushed commits are a failure")
+	excludeAIFiles := flag.Bool("exclude-ai-files", false, "Exclude AI agent files from uncommitted changes check")
 	flag.Parse()
 
 	if *describe {

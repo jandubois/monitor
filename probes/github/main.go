@@ -68,9 +68,9 @@ func main() {
 	describe := flag.Bool("describe", false, "Print probe description")
 	repo := flag.String("repo", "", "Repository (owner/name)")
 	branch := flag.String("branch", "main", "Branch name")
-	maxAgeHours := flag.Int("max_age_hours", 24, "Maximum commit age in hours")
-	minFiles := flag.Int("min_files", 0, "Minimum changed files")
-	minAdditions := flag.Int("min_additions", 0, "Minimum added lines")
+	maxAgeHours := flag.Int("max-age-hours", 24, "Maximum commit age in hours")
+	minFiles := flag.Int("min-files", 0, "Minimum changed files")
+	minAdditions := flag.Int("min-additions", 0, "Minimum added lines")
 	flag.Parse()
 
 	if *describe {

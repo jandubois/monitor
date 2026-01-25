@@ -41,9 +41,9 @@ func main() {
 	describe := flag.Bool("describe", false, "Print probe description")
 	command := flag.String("command", "", "Command to run")
 	shell := flag.String("shell", "/bin/sh", "Shell to use")
-	okCodes := flag.String("ok_codes", "0", "Comma-separated exit codes that indicate success")
-	warningCodes := flag.String("warning_codes", "", "Comma-separated exit codes that indicate warning")
-	captureOutput := flag.Bool("capture_output", true, "Capture command output in result")
+	okCodes := flag.String("ok-codes", "0", "Comma-separated exit codes that indicate success")
+	warningCodes := flag.String("warning-codes", "", "Comma-separated exit codes that indicate warning")
+	captureOutput := flag.Bool("capture-output", true, "Capture command output in result")
 	flag.Parse()
 
 	if *describe {
