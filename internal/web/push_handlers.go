@@ -100,10 +100,12 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 	// Check for existing watcher
 	var watcherID int
 	var existingToken *string
+	var existingVersion *string
 	var approved int
+	isNewWatcher := false
 	err := s.db.DB().QueryRowContext(ctx,
-		`SELECT id, token, approved FROM watchers WHERE name = ?`, req.Name,
-	).Scan(&watcherID, &existingToken, &approved)
+		`SELECT id, token, version, approved FROM watchers WHERE name = ?`, req.Name,
+	).Scan(&watcherID, &existingToken, &existingVersion, &approved)
 
 	if err != nil {
 		// Insert new watcher (paused=1, approved=0)
@@ -119,6 +121,7 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		id, _ := result.LastInsertId()
 		watcherID = int(id)
 		approved = 0
+		isNewWatcher = true
 		slog.Info("new watcher registered (pending approval)", "name", req.Name)
 	} else {
 		// Existing watcher - verify token matches
@@ -138,6 +141,33 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "failed to update watcher", http.StatusInternalServerError)
 			return
 		}
+
+		// Check for watcher version change
+		if existingVersion != nil && *existingVersion != req.Version {
+			_ = s.insertWatcherEvent(ctx, watcherID, EventWatcherVersionChanged, SeverityInfo,
+				fmt.Sprintf("Watcher version changed from %s to %s", *existingVersion, req.Version),
+				map[string]any{
+					"old_version": *existingVersion,
+					"new_version": req.Version,
+				})
+		}
+
+		// Check if this watcher was previously disconnected (connection_lost without connection_restored)
+		if s.hasRecentConnectionLostEvent(ctx, watcherID) {
+			_ = s.insertWatcherEvent(ctx, watcherID, EventConnectionRestored, SeverityInfo,
+				"Watcher reconnected",
+				map[string]any{"version": req.Version})
+		}
+	}
+
+	// Generate "registered" event for new watchers
+	if isNewWatcher {
+		_ = s.insertWatcherEvent(ctx, watcherID, EventRegistered, SeverityInfo,
+			fmt.Sprintf("Watcher '%s' registered", req.Name),
+			map[string]any{
+				"version":     req.Version,
+				"probe_count": len(req.ProbeTypes),
+			})
 	}
 
 	// Register probe types
@@ -145,6 +175,14 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		if pt.Version == "" {
 			pt.Version = "0.0.0"
 		}
+
+		// Check for existing probe version on this watcher for version change events
+		var existingProbeVersion *string
+		_ = s.db.DB().QueryRowContext(ctx, `
+			SELECT pt.version FROM watcher_probe_types wpt
+			JOIN probe_types pt ON pt.id = wpt.probe_type_id
+			WHERE wpt.watcher_id = ? AND pt.name = ?
+		`, watcherID, pt.Name).Scan(&existingProbeVersion)
 
 		argumentsJSON, _ := json.Marshal(pt.Arguments)
 		var outputJSON []byte
@@ -203,6 +241,27 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 			      SELECT id FROM probe_types WHERE name = ? AND id != ?
 			  )
 		`, watcherID, pt.Name, probeTypeID)
+
+		// Generate probe version change events
+		if existingProbeVersion != nil && *existingProbeVersion != pt.Version {
+			if compareVersions(pt.Version, *existingProbeVersion) > 0 {
+				_ = s.insertWatcherEvent(ctx, watcherID, EventProbeVersionUpgrade, SeverityInfo,
+					fmt.Sprintf("Probe %s upgraded from %s to %s", pt.Name, *existingProbeVersion, pt.Version),
+					map[string]any{
+						"probe_name":  pt.Name,
+						"old_version": *existingProbeVersion,
+						"new_version": pt.Version,
+					})
+			} else {
+				_ = s.insertWatcherEvent(ctx, watcherID, EventProbeVersionDowngrade, SeverityWarning,
+					fmt.Sprintf("Probe %s downgraded from %s to %s", pt.Name, *existingProbeVersion, pt.Version),
+					map[string]any{
+						"probe_name":  pt.Name,
+						"old_version": *existingProbeVersion,
+						"new_version": pt.Version,
+					})
+			}
+		}
 	}
 
 	slog.Info("watcher registered", "name", req.Name, "version", req.Version, "probe_types", len(req.ProbeTypes), "approved", approved != 0)
@@ -231,6 +290,9 @@ func (s *Server) handlePushHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if this watcher was previously disconnected before updating last_seen_at
+	wasDisconnected := s.hasRecentConnectionLostEvent(ctx, watcherID)
+
 	now := time.Now().UTC().Format(db.SQLiteTimeFormat)
 
 	_, err := s.db.DB().ExecContext(ctx, `
@@ -239,6 +301,13 @@ func (s *Server) handlePushHeartbeat(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "failed to update heartbeat", http.StatusInternalServerError)
 		return
+	}
+
+	// Generate connection_restored event if watcher was previously disconnected
+	if wasDisconnected {
+		_ = s.insertWatcherEvent(ctx, watcherID, EventConnectionRestored, SeverityInfo,
+			"Watcher reconnected",
+			map[string]any{"version": req.Version})
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -532,4 +601,24 @@ func parseInterval(s string) (time.Duration, error) {
 	default:
 		return time.ParseDuration(s)
 	}
+}
+
+// compareVersions compares two semantic version strings.
+// Returns >0 if a > b, <0 if a < b, 0 if equal.
+func compareVersions(a, b string) int {
+	parseVersion := func(v string) (major, minor, patch int) {
+		fmt.Sscanf(v, "%d.%d.%d", &major, &minor, &patch)
+		return
+	}
+
+	aMajor, aMinor, aPatch := parseVersion(a)
+	bMajor, bMinor, bPatch := parseVersion(b)
+
+	if aMajor != bMajor {
+		return aMajor - bMajor
+	}
+	if aMinor != bMinor {
+		return aMinor - bMinor
+	}
+	return aPatch - bPatch
 }

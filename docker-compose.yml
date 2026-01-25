@@ -47,5 +47,18 @@ services:
       web:
         condition: service_healthy
 
+  meta-watcher:
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+    command: ["meta-watcher", "--web-url=http://web:8080", "--threshold=1m", "--interval=30s"]
+    environment:
+      AUTH_TOKEN: ${AUTH_TOKEN:-changeme}
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   monitor_data:

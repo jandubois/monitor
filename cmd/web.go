@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/jandubois/monitor/internal/config"
 	"github.com/jandubois/monitor/internal/db"
@@ -28,6 +29,7 @@ func init() {
 	webCmd.Flags().String("name", "", "Server name for display (defaults to hostname)")
 	webCmd.Flags().Int("port", 8080, "Port to listen on")
 	webCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env)")
+	webCmd.Flags().Duration("connection-threshold", 2*time.Minute, "Duration before marking a watcher as disconnected (0 to disable)")
 }
 
 func runWeb(cmd *cobra.Command, args []string) error {
@@ -47,6 +49,7 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	name, _ := cmd.Flags().GetString("name")
 	port, _ := cmd.Flags().GetInt("port")
 	authToken, _ := cmd.Flags().GetString("auth-token")
+	connectionThreshold, _ := cmd.Flags().GetDuration("connection-threshold")
 
 	if name == "" {
 		name = getShortHostname()
@@ -67,9 +70,10 @@ func runWeb(cmd *cobra.Command, args []string) error {
 	defer func() { _ = database.Close() }()
 
 	cfg := &config.WebConfig{
-		Name:      name,
-		Port:      port,
-		AuthToken: authToken,
+		Name:                name,
+		Port:                port,
+		AuthToken:           authToken,
+		ConnectionThreshold: connectionThreshold,
 	}
 
 	server, err := web.NewServer(database, cfg)

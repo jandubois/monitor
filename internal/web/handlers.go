@@ -1123,3 +1123,180 @@ func (s *Server) handleTestNotificationChannel(w http.ResponseWriter, r *http.Re
 	// For now, return not implemented
 	http.Error(w, "not implemented", http.StatusNotImplemented)
 }
+
+func (s *Server) handleListWatcherEvents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	query := `
+		SELECT we.id, we.watcher_id, w.name, we.timestamp, we.event_type,
+		       we.severity, we.summary, we.details, we.acknowledged, we.acknowledged_at
+		FROM watcher_events we
+		JOIN watchers w ON w.id = we.watcher_id
+		WHERE 1=1
+	`
+	args := []any{}
+
+	// Filter by watcher_id
+	if watcherID := r.URL.Query().Get("watcher_id"); watcherID != "" {
+		query += " AND we.watcher_id = ?"
+		args = append(args, watcherID)
+	}
+
+	// Filter by event type
+	if eventType := r.URL.Query().Get("type"); eventType != "" {
+		query += " AND we.event_type = ?"
+		args = append(args, eventType)
+	}
+
+	// Filter by severity
+	if severity := r.URL.Query().Get("severity"); severity != "" {
+		query += " AND we.severity = ?"
+		args = append(args, severity)
+	}
+
+	// Filter by timestamp (since)
+	if since := r.URL.Query().Get("since"); since != "" {
+		query += " AND we.timestamp > ?"
+		args = append(args, since)
+	}
+
+	// Filter unacknowledged only
+	if r.URL.Query().Get("unacknowledged") == "true" {
+		query += " AND we.acknowledged = 0"
+	}
+
+	query += " ORDER BY we.timestamp DESC"
+
+	// Limit
+	limit := r.URL.Query().Get("limit")
+	if limit == "" {
+		limit = "100"
+	}
+	query += " LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := s.db.DB().QueryContext(ctx, query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var events []map[string]any
+	for rows.Next() {
+		var id, watcherID int
+		var watcherName, timestamp, eventType, severity, summary string
+		var details db.JSONMap
+		var acknowledged int
+		var acknowledgedAt *string
+
+		if err := rows.Scan(&id, &watcherID, &watcherName, &timestamp, &eventType,
+			&severity, &summary, &details, &acknowledged, &acknowledgedAt); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		event := map[string]any{
+			"id":           id,
+			"watcher_id":   watcherID,
+			"watcher_name": watcherName,
+			"timestamp":    timestamp,
+			"event_type":   eventType,
+			"severity":     severity,
+			"summary":      summary,
+			"acknowledged": acknowledged != 0,
+		}
+		if details != nil {
+			event["details"] = details
+		}
+		if acknowledgedAt != nil {
+			event["acknowledged_at"] = *acknowledgedAt
+		}
+
+		events = append(events, event)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(events)
+}
+
+func (s *Server) handleGetWatcherEvents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	watcherID, _ := strconv.Atoi(r.PathValue("id"))
+
+	rows, err := s.db.DB().QueryContext(ctx, `
+		SELECT we.id, we.watcher_id, w.name, we.timestamp, we.event_type,
+		       we.severity, we.summary, we.details, we.acknowledged, we.acknowledged_at
+		FROM watcher_events we
+		JOIN watchers w ON w.id = we.watcher_id
+		WHERE we.watcher_id = ?
+		ORDER BY we.timestamp DESC
+		LIMIT 100
+	`, watcherID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var events []map[string]any
+	for rows.Next() {
+		var id, wID int
+		var watcherName, timestamp, eventType, severity, summary string
+		var details db.JSONMap
+		var acknowledged int
+		var acknowledgedAt *string
+
+		if err := rows.Scan(&id, &wID, &watcherName, &timestamp, &eventType,
+			&severity, &summary, &details, &acknowledged, &acknowledgedAt); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		event := map[string]any{
+			"id":           id,
+			"watcher_id":   wID,
+			"watcher_name": watcherName,
+			"timestamp":    timestamp,
+			"event_type":   eventType,
+			"severity":     severity,
+			"summary":      summary,
+			"acknowledged": acknowledged != 0,
+		}
+		if details != nil {
+			event["details"] = details
+		}
+		if acknowledgedAt != nil {
+			event["acknowledged_at"] = *acknowledgedAt
+		}
+
+		events = append(events, event)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(events)
+}
+
+func (s *Server) handleAcknowledgeWatcherEvent(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id, _ := strconv.Atoi(r.PathValue("id"))
+
+	now := time.Now().UTC().Format(db.SQLiteTimeFormat)
+
+	result, err := s.db.DB().ExecContext(ctx, `
+		UPDATE watcher_events SET acknowledged = 1, acknowledged_at = ? WHERE id = ?
+	`, now, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "event not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"acknowledged": true})
+}

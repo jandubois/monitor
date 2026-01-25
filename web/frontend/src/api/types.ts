@@ -134,3 +134,18 @@ export interface ProbeConfigFilters {
   group?: string;
   keywords?: string;
 }
+
+export type EventSeverity = 'info' | 'warning' | 'error';
+
+export interface WatcherEvent {
+  id: number;
+  watcher_id: number;
+  watcher_name: string;
+  timestamp: string;
+  event_type: string;
+  severity: EventSeverity;
+  summary: string;
+  details?: Record<string, unknown>;
+  acknowledged: boolean;
+  acknowledged_at?: string;
+}

@@ -43,6 +43,12 @@ func (s *Server) Run(ctx context.Context) error {
 		slog.Error("failed to load notification channels", "error", err)
 	}
 
+	// Start background watcher connection monitor
+	if s.config.ConnectionThreshold > 0 {
+		go s.monitorWatcherConnections(ctx, s.config.ConnectionThreshold)
+		slog.Info("watcher connection monitor started", "threshold", s.config.ConnectionThreshold)
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
 		slog.Info("web server listening", "addr", s.server.Addr)
@@ -82,6 +88,11 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET /api/watchers/{id}", s.requireAuth(http.HandlerFunc(s.handleGetWatcher)))
 	mux.Handle("DELETE /api/watchers/{id}", s.requireAuth(http.HandlerFunc(s.handleDeleteWatcher)))
 	mux.Handle("PUT /api/watchers/{id}/paused", s.requireAuth(http.HandlerFunc(s.handleSetWatcherPaused)))
+	mux.Handle("GET /api/watchers/{id}/events", s.requireAuth(http.HandlerFunc(s.handleGetWatcherEvents)))
+
+	// Watcher events API
+	mux.Handle("GET /api/watcher-events", s.requireAuth(http.HandlerFunc(s.handleListWatcherEvents)))
+	mux.Handle("PUT /api/watcher-events/{id}/acknowledge", s.requireAuth(http.HandlerFunc(s.handleAcknowledgeWatcherEvent)))
 
 	// API routes (with auth)
 	mux.Handle("GET /api/status", s.requireAuth(http.HandlerFunc(s.handleStatus)))

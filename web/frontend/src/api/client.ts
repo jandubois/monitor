@@ -8,6 +8,7 @@ import type {
   Watcher,
   WatcherDetail,
   ProbeConfigFilters,
+  WatcherEvent,
 } from './types';
 
 class ApiClient {
@@ -87,6 +88,36 @@ class ApiClient {
     return this.request(`/watchers/${id}/paused`, {
       method: 'PUT',
       body: JSON.stringify({ paused }),
+    });
+  }
+
+  async getWatcherEvents(watcherId: number): Promise<WatcherEvent[]> {
+    return this.request(`/watchers/${watcherId}/events`);
+  }
+
+  // Watcher Events
+  async getWatcherEventsAll(params?: {
+    watcher_id?: number;
+    type?: string;
+    severity?: string;
+    since?: string;
+    unacknowledged?: boolean;
+    limit?: number;
+  }): Promise<WatcherEvent[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.watcher_id) searchParams.set('watcher_id', String(params.watcher_id));
+    if (params?.type) searchParams.set('type', params.type);
+    if (params?.severity) searchParams.set('severity', params.severity);
+    if (params?.since) searchParams.set('since', params.since);
+    if (params?.unacknowledged) searchParams.set('unacknowledged', 'true');
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    const query = searchParams.toString();
+    return this.request(`/watcher-events${query ? `?${query}` : ''}`);
+  }
+
+  async acknowledgeWatcherEvent(id: number): Promise<void> {
+    return this.request(`/watcher-events/${id}/acknowledge`, {
+      method: 'PUT',
     });
   }
 

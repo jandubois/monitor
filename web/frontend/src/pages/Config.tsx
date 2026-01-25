@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { ProbeConfigForm } from '../components/ProbeConfigForm';
-import type { ProbeConfig } from '../api/types';
+import type { ProbeConfig, WatcherEvent } from '../api/types';
 
 interface ConfigProps {
   onBack: () => void;
@@ -13,6 +13,7 @@ export function Config({ onBack }: ConfigProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
   const [initialProbeTypeId, setInitialProbeTypeId] = useState<number | undefined>();
+  const [expandedWatcher, setExpandedWatcher] = useState<number | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -27,6 +28,26 @@ export function Config({ onBack }: ConfigProps) {
   const { data: watchers } = useQuery({
     queryKey: ['watchers'],
     queryFn: () => api.getWatchers(),
+  });
+
+  // Fetch unacknowledged events for badge counts
+  const { data: unacknowledgedEvents } = useQuery({
+    queryKey: ['watcherEvents', 'unacknowledged'],
+    queryFn: () => api.getWatcherEventsAll({ unacknowledged: true }),
+    refetchInterval: 30000,
+  });
+
+  // Group events by watcher for badge counts
+  const eventCountByWatcher = unacknowledgedEvents?.reduce((acc, e) => {
+    acc[e.watcher_id] = (acc[e.watcher_id] || 0) + 1;
+    return acc;
+  }, {} as Record<number, number>) || {};
+
+  // Fetch events for expanded watcher
+  const { data: watcherEvents } = useQuery({
+    queryKey: ['watcherEvents', expandedWatcher],
+    queryFn: () => expandedWatcher ? api.getWatcherEvents(expandedWatcher) : Promise.resolve([]),
+    enabled: !!expandedWatcher,
   });
 
   const { data: probeTypes, isLoading: typesLoading } = useQuery({
@@ -68,6 +89,13 @@ export function Config({ onBack }: ConfigProps) {
     },
   });
 
+  const acknowledgeEventMutation = useMutation({
+    mutationFn: (id: number) => api.acknowledgeWatcherEvent(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watcherEvents'] });
+    },
+  });
+
   return (
     <div className="p-6">
       <button
@@ -87,46 +115,119 @@ export function Config({ onBack }: ConfigProps) {
         ) : (
           <div className="grid gap-3">
             {watchers?.map((w) => (
-              <div key={w.id} className="border rounded p-3 bg-gray-50 flex items-center justify-between">
-                <div>
-                  <span className="font-medium">{w.name}</span>
-                  {w.version && <span className="text-gray-400 text-sm ml-2">v{w.version}</span>}
-                  <span className={`ml-2 text-xs px-2 py-0.5 rounded ${w.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {w.healthy ? 'healthy' : 'unhealthy'}
-                  </span>
-                  {!w.approved && (
-                    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">
-                      pending approval
+              <div key={w.id} className="border rounded bg-gray-50">
+                <div className="p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setExpandedWatcher(expandedWatcher === w.id ? null : w.id)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <svg
+                        className={`w-4 h-4 transition-transform ${expandedWatcher === w.id ? 'rotate-90' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                    <span className="font-medium">{w.name}</span>
+                    {w.version && <span className="text-gray-400 text-sm">v{w.version}</span>}
+                    <span className={`text-xs px-2 py-0.5 rounded ${w.healthy ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                      {w.healthy ? 'healthy' : 'unhealthy'}
                     </span>
-                  )}
-                  {w.approved && w.paused && (
-                    <span className="ml-2 text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">
-                      paused
+                    {!w.approved && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-orange-100 text-orange-700">
+                        pending approval
+                      </span>
+                    )}
+                    {w.approved && w.paused && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">
+                        paused
+                      </span>
+                    )}
+                    {eventCountByWatcher[w.id] > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded bg-red-100 text-red-700 font-medium">
+                        {eventCountByWatcher[w.id]} event{eventCountByWatcher[w.id] > 1 ? 's' : ''}
+                      </span>
+                    )}
+                    <span className="text-sm text-gray-500">
+                      {w.probe_type_count} types, {w.config_count} configs
                     </span>
-                  )}
-                  <span className="ml-3 text-sm text-gray-500">
-                    {w.probe_type_count} types, {w.config_count} configs
-                  </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => pauseWatcherMutation.mutate({ id: w.id, paused: !w.paused })}
+                      className={`text-sm px-2 py-1 rounded ${w.paused ? 'text-green-600 hover:text-green-800' : 'text-yellow-600 hover:text-yellow-800'}`}
+                      title={!w.approved ? 'Approve watcher' : (w.paused ? 'Resume notifications' : 'Pause notifications')}
+                    >
+                      {!w.approved ? 'Approve' : (w.paused ? 'Resume' : 'Pause')}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Delete watcher "${w.name}" and all its probe data?`)) {
+                          deleteWatcherMutation.mutate(w.id);
+                        }
+                      }}
+                      className="text-red-600 hover:text-red-800 text-sm"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => pauseWatcherMutation.mutate({ id: w.id, paused: !w.paused })}
-                    className={`text-sm px-2 py-1 rounded ${w.paused ? 'text-green-600 hover:text-green-800' : 'text-yellow-600 hover:text-yellow-800'}`}
-                    title={!w.approved ? 'Approve watcher' : (w.paused ? 'Resume notifications' : 'Pause notifications')}
-                  >
-                    {!w.approved ? 'Approve' : (w.paused ? 'Resume' : 'Pause')}
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm(`Delete watcher "${w.name}" and all its probe data?`)) {
-                        deleteWatcherMutation.mutate(w.id);
-                      }
-                    }}
-                    className="text-red-600 hover:text-red-800 text-sm"
-                  >
-                    Delete
-                  </button>
-                </div>
+                {expandedWatcher === w.id && (
+                  <div className="border-t bg-white p-3">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Recent Events</h4>
+                    {watcherEvents?.length === 0 ? (
+                      <p className="text-sm text-gray-500">No events recorded</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {watcherEvents?.slice(0, 10).map((event: WatcherEvent) => (
+                          <div
+                            key={event.id}
+                            className={`text-sm p-2 rounded border ${
+                              event.acknowledged
+                                ? 'bg-gray-50 border-gray-200'
+                                : event.severity === 'error'
+                                  ? 'bg-red-50 border-red-200'
+                                  : event.severity === 'warning'
+                                    ? 'bg-yellow-50 border-yellow-200'
+                                    : 'bg-blue-50 border-blue-200'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                                  event.severity === 'error'
+                                    ? 'bg-red-100 text-red-700'
+                                    : event.severity === 'warning'
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-blue-100 text-blue-700'
+                                }`}>
+                                  {event.event_type.replace(/_/g, ' ')}
+                                </span>
+                                <span className="text-gray-600">{event.summary}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">
+                                  {new Date(event.timestamp).toLocaleString()}
+                                </span>
+                                {!event.acknowledged && (
+                                  <button
+                                    onClick={() => acknowledgeEventMutation.mutate(event.id)}
+                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                  >
+                                    Acknowledge
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -1,5 +1,7 @@
 package config
 
+import "time"
+
 // WatcherConfig holds configuration for the watcher service.
 type WatcherConfig struct {
 	Name          string // Unique watcher name (e.g., "nas", "macbook")
@@ -13,7 +15,8 @@ type WatcherConfig struct {
 
 // WebConfig holds configuration for the web server.
 type WebConfig struct {
-	Name      string // Server name for display in dashboard
-	Port      int
-	AuthToken string
+	Name                 string        // Server name for display in dashboard
+	Port                 int
+	AuthToken            string
+	ConnectionThreshold  time.Duration // Duration before marking a watcher as disconnected
 }
