@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -42,8 +43,12 @@ type metaWatcher struct {
 	interval  time.Duration
 	client    *http.Client
 
-	// Track known watchers to detect additions/removals
-	knownWatchers map[int]string // id -> name
+	// Registration state
+	watcherID   int
+	probeTypeID int
+
+	// Track probe configs for each monitored watcher
+	probeConfigs map[int]int // watcher_id -> probe_config_id
 }
 
 type watcherInfo struct {
@@ -77,6 +82,50 @@ type probeConfig struct {
 	WatcherName   string `json:"watcher_name"`
 }
 
+type registerRequest struct {
+	Name       string           `json:"name"`
+	Version    string           `json:"version"`
+	Token      string           `json:"token"`
+	ProbeTypes []registerProbe  `json:"probe_types"`
+}
+
+type registerProbe struct {
+	Name            string         `json:"name"`
+	Version         string         `json:"version"`
+	Description     string         `json:"description"`
+	Arguments       map[string]any `json:"arguments"`
+	Output          map[string]any `json:"output,omitempty"`
+	DefaultInterval string         `json:"default_interval,omitempty"`
+	ExecutablePath  string         `json:"executable_path"`
+	Subcommand      string         `json:"subcommand,omitempty"`
+}
+
+type registerResponse struct {
+	WatcherID        int  `json:"watcher_id"`
+	RegisteredProbes int  `json:"registered_probes"`
+	Approved         bool `json:"approved"`
+}
+
+type probeType struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	WatcherID int    `json:"watcher_id"`
+}
+
+type probeConfigCreate struct {
+	ProbeTypeID    int            `json:"probe_type_id"`
+	WatcherID      int            `json:"watcher_id"`
+	Name           string         `json:"name"`
+	Enabled        bool           `json:"enabled"`
+	Arguments      map[string]any `json:"arguments"`
+	Interval       string         `json:"interval"`
+	TimeoutSeconds int            `json:"timeout_seconds"`
+}
+
+type probeConfigResponse struct {
+	ID int `json:"id"`
+}
+
 func runMetaWatcher(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -103,15 +152,21 @@ func runMetaWatcher(cmd *cobra.Command, args []string) error {
 	}
 
 	mw := &metaWatcher{
-		webURL:        webURL,
-		token:         token,
-		threshold:     threshold,
-		interval:      interval,
-		client:        &http.Client{Timeout: 30 * time.Second},
-		knownWatchers: make(map[int]string),
+		webURL:       webURL,
+		token:        token,
+		threshold:    threshold,
+		interval:     interval,
+		client:       &http.Client{Timeout: 30 * time.Second},
+		probeConfigs: make(map[int]int),
 	}
 
 	slog.Info("meta-watcher starting", "web_url", webURL, "threshold", threshold, "interval", interval)
+
+	// Register as a watcher
+	if err := mw.register(ctx); err != nil {
+		return fmt.Errorf("registration failed: %w", err)
+	}
+	slog.Info("registered as watcher", "watcher_id", mw.watcherID, "probe_type_id", mw.probeTypeID)
 
 	// Initial check
 	if err := mw.check(ctx); err != nil {
@@ -135,6 +190,67 @@ func runMetaWatcher(cmd *cobra.Command, args []string) error {
 	}
 }
 
+func (mw *metaWatcher) register(ctx context.Context) error {
+	req := registerRequest{
+		Name:    "meta-watcher",
+		Version: "1.0.0",
+		Token:   mw.token,
+		ProbeTypes: []registerProbe{
+			{
+				Name:            "watcher-health",
+				Version:         "1.0.0",
+				Description:     "Monitor watcher health and events",
+				DefaultInterval: mw.interval.String(),
+				ExecutablePath:  "internal",
+				Arguments: map[string]any{
+					"required": map[string]any{
+						"watcher_id": map[string]any{
+							"type":        "number",
+							"description": "ID of the watcher to monitor",
+						},
+					},
+					"optional": map[string]any{},
+				},
+				Output: map[string]any{
+					"metrics": map[string]any{
+						"last_seen_seconds_ago":   map[string]any{"type": "number", "unit": "seconds", "description": "Seconds since last heartbeat"},
+						"unacknowledged_events":   map[string]any{"type": "integer", "unit": "count", "description": "Unacknowledged event count"},
+					},
+					"data": map[string]any{
+						"watcher_name":    map[string]any{"type": "string", "description": "Watcher name"},
+						"watcher_version": map[string]any{"type": "string", "description": "Watcher version"},
+						"probe_type_count": map[string]any{"type": "integer", "description": "Number of probe types"},
+					},
+				},
+			},
+		},
+	}
+
+	var resp registerResponse
+	if err := mw.postJSON(ctx, "/api/push/register", req, &resp, false); err != nil {
+		return err
+	}
+
+	mw.watcherID = resp.WatcherID
+
+	// Get our probe type ID
+	probeTypes, err := mw.fetchProbeTypes(ctx, mw.watcherID)
+	if err != nil {
+		return fmt.Errorf("fetch probe types: %w", err)
+	}
+	for _, pt := range probeTypes {
+		if pt.Name == "watcher-health" {
+			mw.probeTypeID = pt.ID
+			break
+		}
+	}
+	if mw.probeTypeID == 0 {
+		return fmt.Errorf("watcher-health probe type not found after registration")
+	}
+
+	return nil
+}
+
 func (mw *metaWatcher) check(ctx context.Context) error {
 	// Fetch all watchers
 	watchers, err := mw.fetchWatchers(ctx)
@@ -154,8 +270,23 @@ func (mw *metaWatcher) check(ctx context.Context) error {
 		eventsByWatcher[e.WatcherID] = append(eventsByWatcher[e.WatcherID], e)
 	}
 
-	// Check each watcher and log status
+	// Track current watcher IDs
+	currentIDs := make(map[int]bool)
+
+	// Check each watcher (excluding ourselves)
 	for _, w := range watchers {
+		if w.ID == mw.watcherID {
+			continue
+		}
+		currentIDs[w.ID] = true
+
+		// Ensure we have a probe config for this watcher
+		configID, err := mw.ensureProbeConfig(ctx, w)
+		if err != nil {
+			slog.Error("failed to ensure probe config", "watcher", w.Name, "error", err)
+			continue
+		}
+
 		watcherEvents := eventsByWatcher[w.ID]
 		status, summary, message := mw.evaluateWatcher(w, watcherEvents)
 
@@ -172,26 +303,27 @@ func (mw *metaWatcher) check(ctx context.Context) error {
 			"summary", summary,
 			"events", len(watcherEvents))
 
-		// Track new watchers
-		if _, known := mw.knownWatchers[w.ID]; !known {
-			slog.Info("discovered watcher", "name", w.Name, "id", w.ID)
-			mw.knownWatchers[w.ID] = w.Name
+		// Push probe result
+		metrics := map[string]any{
+			"last_seen_seconds_ago": time.Since(w.LastSeenAt).Seconds(),
+			"unacknowledged_events": len(watcherEvents),
+		}
+		data := map[string]any{
+			"watcher_name":     w.Name,
+			"watcher_version":  w.Version,
+			"probe_type_count": w.ProbeTypeCount,
 		}
 
-		// In a full implementation, we would push probe results here
-		// For now, we just log the status
-		_ = message
+		if err := mw.pushResult(ctx, configID, status, summary, message, metrics, data); err != nil {
+			slog.Error("failed to push result", "watcher", w.Name, "error", err)
+		}
 	}
 
-	// Detect removed watchers
-	currentIDs := make(map[int]bool)
-	for _, w := range watchers {
-		currentIDs[w.ID] = true
-	}
-	for id, name := range mw.knownWatchers {
-		if !currentIDs[id] {
-			slog.Info("watcher removed", "name", name, "id", id)
-			delete(mw.knownWatchers, id)
+	// Remove probe configs for watchers that no longer exist
+	for watcherID := range mw.probeConfigs {
+		if !currentIDs[watcherID] {
+			slog.Info("watcher removed, cleaning up", "watcher_id", watcherID)
+			delete(mw.probeConfigs, watcherID)
 		}
 	}
 
@@ -240,58 +372,59 @@ func (mw *metaWatcher) evaluateWatcher(w watcherInfo, events []watcherEvent) (st
 		fmt.Sprintf("Watcher '%s' is healthy. Version: %s, Probes: %d", w.Name, w.Version, w.ProbeTypeCount)
 }
 
+func (mw *metaWatcher) ensureProbeConfig(ctx context.Context, w watcherInfo) (int, error) {
+	// Check if we already have a probe config for this watcher
+	if configID, exists := mw.probeConfigs[w.ID]; exists {
+		return configID, nil
+	}
+
+	// Create a new probe config
+	cfg := probeConfigCreate{
+		ProbeTypeID:    mw.probeTypeID,
+		WatcherID:      mw.watcherID,
+		Name:           fmt.Sprintf("Monitor: %s", w.Name),
+		Enabled:        true,
+		Arguments:      map[string]any{"watcher_id": w.ID},
+		Interval:       mw.interval.String(),
+		TimeoutSeconds: 30,
+	}
+
+	var resp probeConfigResponse
+	if err := mw.postJSON(ctx, "/api/probe-configs", cfg, &resp, true); err != nil {
+		return 0, err
+	}
+
+	mw.probeConfigs[w.ID] = resp.ID
+	slog.Info("created probe config for watcher", "watcher", w.Name, "config_id", resp.ID)
+
+	return resp.ID, nil
+}
+
 func (mw *metaWatcher) fetchWatchers(ctx context.Context) ([]watcherInfo, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", mw.webURL+"/api/watchers", nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+mw.token)
-
-	resp, err := mw.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
 	var watchers []watcherInfo
-	if err := json.NewDecoder(resp.Body).Decode(&watchers); err != nil {
+	if err := mw.getJSON(ctx, "/api/watchers", &watchers); err != nil {
 		return nil, err
 	}
-
 	return watchers, nil
 }
 
 func (mw *metaWatcher) fetchEvents(ctx context.Context) ([]watcherEvent, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", mw.webURL+"/api/watcher-events?unacknowledged=true", nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+mw.token)
-
-	resp, err := mw.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
-	}
-
 	var events []watcherEvent
-	if err := json.NewDecoder(resp.Body).Decode(&events); err != nil {
+	if err := mw.getJSON(ctx, "/api/watcher-events?unacknowledged=true", &events); err != nil {
 		return nil, err
 	}
-
 	return events, nil
 }
 
-// pushResult sends a probe result to the web service (for future use).
-func (mw *metaWatcher) pushResult(ctx context.Context, configID int, status, summary, message string, metrics map[string]any) error {
+func (mw *metaWatcher) fetchProbeTypes(ctx context.Context, watcherID int) ([]probeType, error) {
+	var probeTypes []probeType
+	if err := mw.getJSON(ctx, fmt.Sprintf("/api/probe-types?watcher=%d", watcherID), &probeTypes); err != nil {
+		return nil, err
+	}
+	return probeTypes, nil
+}
+
+func (mw *metaWatcher) pushResult(ctx context.Context, configID int, status, summary, message string, metrics, data map[string]any) error {
 	body := map[string]any{
 		"watcher":         "meta-watcher",
 		"probe_config_id": configID,
@@ -299,18 +432,21 @@ func (mw *metaWatcher) pushResult(ctx context.Context, configID int, status, sum
 		"summary":         summary,
 		"message":         message,
 		"metrics":         metrics,
+		"data":            data,
 		"duration_ms":     0,
 		"scheduled_at":    time.Now().UTC(),
 		"executed_at":     time.Now().UTC(),
 	}
 
-	bodyJSON, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, "POST", mw.webURL+"/api/push/result", bytes.NewReader(bodyJSON))
+	return mw.postJSON(ctx, "/api/push/result", body, nil, true)
+}
+
+func (mw *metaWatcher) getJSON(ctx context.Context, path string, response any) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", mw.webURL+path, nil)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+mw.token)
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := mw.client.Do(req)
 	if err != nil {
@@ -319,7 +455,49 @@ func (mw *metaWatcher) pushResult(ctx context.Context, configID int, status, sum
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
+	}
+
+	if response != nil {
+		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (mw *metaWatcher) postJSON(ctx context.Context, path string, body any, response any, useAuth bool) error {
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", mw.webURL+path, bytes.NewReader(bodyJSON))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if useAuth {
+		req.Header.Set("Authorization", "Bearer "+mw.token)
+	}
+
+	resp, err := mw.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	if response != nil {
+		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+			return err
+		}
 	}
 
 	return nil
