@@ -47,6 +47,7 @@ type RegisterProbeType struct {
 	Description     string         `json:"description"`
 	Arguments       map[string]any `json:"arguments"`
 	Output          map[string]any `json:"output,omitempty"`
+	DefaultName     string         `json:"default_name,omitempty"`
 	DefaultInterval string         `json:"default_interval,omitempty"`
 	ExecutablePath  string         `json:"executable_path"`
 	Subcommand      string         `json:"subcommand,omitempty"`

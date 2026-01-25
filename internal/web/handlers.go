@@ -90,7 +90,7 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		watcherID, _ := strconv.Atoi(watcherIDStr)
 		rows, err = s.db.DB().QueryContext(ctx, `
 			SELECT pt.id, pt.name, pt.description, pt.version, pt.arguments,
-			       pt.output, pt.default_interval, wpt.executable_path,
+			       pt.output, pt.default_interval, pt.default_name, wpt.executable_path,
 			       pt.registered_at, pt.updated_at
 			FROM probe_types pt
 			JOIN watcher_probe_types wpt ON wpt.probe_type_id = pt.id
@@ -101,7 +101,7 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		// No filter - return all probe types without executable_path
 		rows, err = s.db.DB().QueryContext(ctx, `
 			SELECT id, name, description, version, arguments, output, default_interval,
-			       registered_at, updated_at
+			       default_name, registered_at, updated_at
 			FROM probe_types
 			ORDER BY name, version
 		`)
@@ -118,7 +118,7 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		var name, version string
 		var description *string
 		var arguments, output db.JSONMap
-		var defaultInterval *string
+		var defaultInterval, defaultName *string
 		var registeredAt db.NullTime
 		var updatedAt db.NullTime
 
@@ -126,13 +126,13 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 
 		if watcherIDStr != "" {
 			var executablePath string
-			if err := rows.Scan(&id, &name, &description, &version, &arguments, &output, &defaultInterval, &executablePath, &registeredAt, &updatedAt); err != nil {
+			if err := rows.Scan(&id, &name, &description, &version, &arguments, &output, &defaultInterval, &defaultName, &executablePath, &registeredAt, &updatedAt); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			pt["executable_path"] = executablePath
 		} else {
-			if err := rows.Scan(&id, &name, &description, &version, &arguments, &output, &defaultInterval, &registeredAt, &updatedAt); err != nil {
+			if err := rows.Scan(&id, &name, &description, &version, &arguments, &output, &defaultInterval, &defaultName, &registeredAt, &updatedAt); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -152,6 +152,9 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		}
 		if defaultInterval != nil {
 			pt["default_interval"] = *defaultInterval
+		}
+		if defaultName != nil {
+			pt["default_name"] = *defaultName
 		}
 		if registeredAt.Valid {
 			pt["registered_at"] = registeredAt.Time

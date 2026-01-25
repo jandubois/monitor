@@ -29,6 +29,7 @@ type RegisterProbeType struct {
 	Description     string         `json:"description"`
 	Arguments       map[string]any `json:"arguments"`
 	Output          map[string]any `json:"output,omitempty"`
+	DefaultName     string         `json:"default_name,omitempty"`
 	DefaultInterval string         `json:"default_interval,omitempty"`
 	ExecutablePath  string         `json:"executable_path"`
 	Subcommand      string         `json:"subcommand,omitempty"`
@@ -198,9 +199,9 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			// Insert new probe type
 			result, err := s.db.DB().ExecContext(ctx, `
-				INSERT INTO probe_types (name, version, description, arguments, output, default_interval, registered_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?)
-			`, pt.Name, pt.Version, pt.Description, string(argumentsJSON), string(outputJSON), pt.DefaultInterval, now)
+				INSERT INTO probe_types (name, version, description, arguments, output, default_name, default_interval, registered_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			`, pt.Name, pt.Version, pt.Description, string(argumentsJSON), string(outputJSON), pt.DefaultName, pt.DefaultInterval, now)
 			if err != nil {
 				slog.Error("failed to register probe type", "name", pt.Name, "error", err)
 				continue
@@ -210,9 +211,9 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// Update existing probe type
 			_, err = s.db.DB().ExecContext(ctx, `
-				UPDATE probe_types SET description = ?, arguments = ?, output = ?, default_interval = ?, updated_at = ?
+				UPDATE probe_types SET description = ?, arguments = ?, output = ?, default_name = ?, default_interval = ?, updated_at = ?
 				WHERE id = ?
-			`, pt.Description, string(argumentsJSON), string(outputJSON), pt.DefaultInterval, now, probeTypeID)
+			`, pt.Description, string(argumentsJSON), string(outputJSON), pt.DefaultName, pt.DefaultInterval, now, probeTypeID)
 			if err != nil {
 				slog.Error("failed to update probe type", "name", pt.Name, "error", err)
 				continue
