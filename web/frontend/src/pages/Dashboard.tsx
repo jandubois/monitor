@@ -318,7 +318,7 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
               <div key={group} className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
                 <button
                   onClick={() => toggleGroup(group)}
-                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
+                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-200 hover:bg-gray-300 transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <h2 className="text-lg font-semibold text-gray-700">{group}</h2>
@@ -347,7 +347,7 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
                   </svg>
                 </button>
                 {!isCollapsed && (
-                  <div className="divide-y divide-gray-100">
+                  <div className="divide-y divide-gray-300">
                     {groupedConfigs![group].map((config) => (
                       <ProbeRow
                         key={config.id}

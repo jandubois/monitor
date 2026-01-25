@@ -196,7 +196,7 @@ export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseT
     : getEffectiveStatus(config.last_status, config.next_run_at, config.timeout_seconds, config.interval);
 
   return (
-    <div className={`border-b border-gray-100 ${isPaused ? 'opacity-50' : ''}`}>
+    <div className={`border-b border-gray-300 ${isPaused ? 'opacity-50' : ''}`}>
       {/* Line 1: Name and timing */}
       <div className="flex items-center justify-between px-3 py-1.5">
         <div className="flex items-center gap-2 min-w-0">
