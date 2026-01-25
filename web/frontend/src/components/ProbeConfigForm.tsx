@@ -28,6 +28,7 @@ interface ProbeConfigFormProps {
 
 export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, initialWatcherId, onClose, onSaved, onRerun }: ProbeConfigFormProps) {
   const [name, setName] = useState(editingConfig?.name ?? '');
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(!!editingConfig); // Treat editing as manual
   const [watcherId, setWatcherId] = useState<number | undefined>(editingConfig?.watcher_id ?? initialWatcherId ?? watchers[0]?.id);
   const [probeTypeId, setProbeTypeId] = useState<number>(editingConfig?.probe_type_id ?? initialProbeTypeId ?? 0);
   const [enabled, setEnabled] = useState(editingConfig?.enabled ?? true);
@@ -75,14 +76,14 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, i
     return expandTemplate(selectedType.default_name, args, selectedWatcher, selectedType);
   }, [selectedType, args, selectedWatcher]);
 
-  // Auto-populate name when template inputs change (for new probes only)
+  // Auto-populate name when template inputs change (unless manually edited)
   useEffect(() => {
-    if (editingConfig) return; // Don't auto-update name when editing
+    if (nameManuallyEdited) return;
     const defaultName = generateDefaultName();
     if (defaultName) {
       setName(defaultName);
     }
-  }, [editingConfig, generateDefaultName]);
+  }, [nameManuallyEdited, generateDefaultName]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -192,7 +193,12 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, i
                 <input
                   type="text"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    const newValue = e.target.value;
+                    setName(newValue);
+                    // If cleared, restore template behavior; otherwise mark as manually edited
+                    setNameManuallyEdited(newValue !== '');
+                  }}
                   required
                   className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="My probe"
