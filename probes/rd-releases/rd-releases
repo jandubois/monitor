@@ -16,8 +16,8 @@ if [[ "${1:-}" == "--describe" ]]; then
 {
   "name": "rd-releases",
   "description": "Check if the latest Rancher Desktop release is in the update channel",
-  "version": "1.0.0",
-  "default_name": "RD Releases",
+  "version": "1.1.0",
+  "default_name": "Rancher Desktop Releases",
   "default_interval": "6h",
   "arguments": {
     "optional": {
@@ -50,11 +50,43 @@ EOF
     exit 0
 fi
 
-GITHUB_API="https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases/latest"
+GITHUB_API="https://api.github.com/repos/rancher-sandbox/rancher-desktop/releases"
 UPDATE_CHANNEL="https://desktop.version.rancher.io/v1/checkupgrade"
+RELEASE_URL_BASE="https://github.com/rancher-sandbox/rancher-desktop/releases/tag"
 
 warn_days="${PROBE_WARN_DAYS:-4}"
 critical_days="${PROBE_CRITICAL_DAYS:-7}"
+
+# Format a relative time description
+format_relative_time() {
+    local days=$1
+    if [[ $days -eq 0 ]]; then
+        echo "today"
+    elif [[ $days -eq 1 ]]; then
+        echo "yesterday"
+    elif [[ $days -lt 7 ]]; then
+        echo "$days days ago"
+    elif [[ $days -lt 14 ]]; then
+        echo "1 week ago"
+    elif [[ $days -lt 30 ]]; then
+        echo "$((days / 7)) weeks ago"
+    elif [[ $days -lt 60 ]]; then
+        echo "1 month ago"
+    else
+        echo "$((days / 30)) months ago"
+    fi
+}
+
+# Format date as "Jan 15, 2025" using jq for portability
+format_date() {
+    local iso_date=$1
+    echo "$iso_date" | jq -rR '
+        split("T")[0] |
+        split("-") |
+        .[1] as $m | .[2] as $d | .[0] as $y |
+        (["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][($m | tonumber) - 1]) + " " + $d + ", " + $y
+    ' 2>/dev/null || echo "$iso_date"
+}
 
 output_result() {
     jq --null-input \
@@ -104,7 +136,7 @@ curl_github() {
 }
 
 # Fetch latest GitHub release
-github_response=$(curl_github "$GITHUB_API") || output_error "Failed to fetch GitHub release"
+github_response=$(curl_github "$GITHUB_API/latest") || output_error "Failed to fetch GitHub release"
 
 # Extract version (strip leading 'v') and published date
 read -r latest_version published_at < <(
@@ -125,18 +157,63 @@ if [[ -z "$channel_version" ]]; then
     output_error "No version tagged as 'latest' in update channel"
 fi
 
-# Calculate days since release (jq handles ISO 8601 parsing)
+# Calculate days since release
 now_epoch=$(date "+%s")
 published_epoch=$(echo "$published_at" | jq -rR 'try fromdate') || output_error "Failed to parse release date"
 days_since=$(( (now_epoch - published_epoch) / 86400 ))
 
+# Fetch channel version's release date if different from latest
+channel_published_at=""
+channel_days_since=0
+if [[ "$latest_version" != "$channel_version" ]]; then
+    channel_response=$(curl_github "$GITHUB_API/tags/v$channel_version" 2>/dev/null) || true
+    if [[ -n "$channel_response" ]]; then
+        channel_published_at=$(echo "$channel_response" | jq -r '.published_at // empty')
+        if [[ -n "$channel_published_at" ]]; then
+            channel_epoch=$(echo "$channel_published_at" | jq -rR 'try fromdate') || true
+            if [[ -n "$channel_epoch" ]]; then
+                channel_days_since=$(( (now_epoch - channel_epoch) / 86400 ))
+            fi
+        fi
+    fi
+fi
+
+# Build URLs
+latest_url="$RELEASE_URL_BASE/v$latest_version"
+channel_url="$RELEASE_URL_BASE/v$channel_version"
+
+# Format dates for display
+latest_date_formatted=$(format_date "$published_at")
+latest_relative=$(format_relative_time "$days_since")
+
+# Build detailed message
+build_message() {
+    local msg="[Release $latest_version]($latest_url) was published on $latest_date_formatted ($latest_relative)."
+
+    if [[ "$latest_version" == "$channel_version" ]]; then
+        msg="$msg\n\nThis release is available in the update channel."
+    elif [[ -n "$channel_published_at" ]]; then
+        local channel_date_formatted=$(format_date "$channel_published_at")
+        local channel_relative=$(format_relative_time "$channel_days_since")
+        msg="$msg\n\nThe update channel has [release $channel_version]($channel_url), published on $channel_date_formatted ($channel_relative)."
+    else
+        msg="$msg\n\nThe update channel has [release $channel_version]($channel_url)."
+    fi
+
+    echo -e "$msg"
+}
+
 # Check if latest release is in the update channel
 if [[ "$latest_version" == "$channel_version" ]]; then
-    output_result "ok" "$latest_version in channel" "Latest release $latest_version is in update channel"
+    message=$(build_message)
+    output_result "ok" "$latest_version in channel" "$message"
 elif [[ "$days_since" -gt "$critical_days" ]]; then
-    output_result "critical" "$latest_version missing ($days_since days)" "Release $latest_version not in update channel after $days_since days"
+    message=$(build_message)
+    output_result "critical" "$latest_version missing ($days_since days)" "$message"
 elif [[ "$days_since" -gt "$warn_days" ]]; then
-    output_result "warning" "$latest_version missing ($days_since days)" "Release $latest_version not in update channel after $days_since days"
+    message=$(build_message)
+    output_result "warning" "$latest_version missing ($days_since days)" "$message"
 else
-    output_result "ok" "$latest_version pending ($days_since days)" "Release $latest_version not yet in update channel ($days_since days old)"
+    message=$(build_message)
+    output_result "ok" "$latest_version pending ($days_since days)" "$message"
 fi
