@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import { ProbeRow } from '../components/ProbeRow';
 import { ProbeConfigForm } from '../components/ProbeConfigForm';
+import { WatchersGroup } from '../components/WatchersGroup';
 import type { ProbeConfig, ProbeResult } from '../api/types';
 
 const COLLAPSED_GROUPS_KEY = 'dashboard-collapsed-groups';
@@ -295,14 +296,17 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
         />
       </div>
 
-      {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Loading probes...</div>
-      ) : sortedConfigs?.length === 0 ? (
-        <div className="text-center py-12 text-gray-500">
-          {keywordFilter ? 'No probes match this filter.' : 'No probes configured yet.'}
-        </div>
-      ) : (
-        <div className="space-y-4">
+      <div className="space-y-4">
+        <WatchersGroup />
+
+        {isLoading ? (
+          <div className="text-center py-12 text-gray-500">Loading probes...</div>
+        ) : sortedConfigs?.length === 0 ? (
+          <div className="text-center py-12 text-gray-500">
+            {keywordFilter ? 'No probes match this filter.' : 'No probes configured yet.'}
+          </div>
+        ) : (
+          <>
           {groups.map((group) => {
             const isCollapsed = collapsedGroups.has(group);
             const groupProbes = groupedConfigs![group];
@@ -365,8 +369,9 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
               </div>
             );
           })}
-        </div>
-      )}
+          </>
+        )}
+      </div>
 
       {showForm && watchers && (
         <ProbeConfigForm
