@@ -28,13 +28,18 @@ function formatRelativeTime(dateStr: string | undefined): string {
   return `${diffDay}d ago`;
 }
 
-function formatNextRun(dateStr: string | undefined): string {
+function formatNextRun(dateStr: string | undefined, timeoutSeconds: number): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = date.getTime() - now.getTime();
 
-  if (diffMs < 0) return 'pending';
+  if (diffMs < 0) {
+    // Check if overdue (more than 3x timeout)
+    const overdueThresholdMs = timeoutSeconds * 3 * 1000;
+    if (-diffMs > overdueThresholdMs) return 'overdue';
+    return 'pending';
+  }
 
   const diffSec = Math.floor(diffMs / 1000);
   const diffMin = Math.floor(diffSec / 60);
@@ -44,6 +49,15 @@ function formatNextRun(dateStr: string | undefined): string {
   if (diffMin < 60) return `in ${diffMin}m`;
   if (diffHour < 24) return `in ${diffHour}h`;
   return date.toLocaleDateString();
+}
+
+function isOverdue(nextRunAt: string | undefined, timeoutSeconds: number): boolean {
+  if (!nextRunAt) return false;
+  const date = new Date(nextRunAt);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const overdueThresholdMs = timeoutSeconds * 3 * 1000;
+  return diffMs < 0 && -diffMs > overdueThresholdMs;
 }
 
 // Status indicator colors
@@ -126,6 +140,7 @@ export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseT
   const [isExpanded, setIsExpanded] = useState(false);
   const summary = config.last_summary || config.last_message?.split('\n')[0] || '';
   const hasDetails = config.last_message && config.last_message !== summary;
+  const probeIsOverdue = !isPaused && !isRunning && isOverdue(config.next_run_at, config.timeout_seconds);
 
   return (
     <div className={`border-b border-gray-100 ${isPaused ? 'opacity-50' : ''}`}>
@@ -137,14 +152,19 @@ export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseT
           {config.orphaned && (
             <span className="text-xs px-1 py-0.5 bg-red-100 text-red-600 rounded" title="No watcher provides this probe type">orphaned</span>
           )}
-          {isPaused && !config.orphaned && (
+          {probeIsOverdue && !config.orphaned && (
+            <span className="text-xs px-1 py-0.5 bg-orange-100 text-orange-600 rounded" title="Probe has not run as scheduled">overdue</span>
+          )}
+          {isPaused && !config.orphaned && !probeIsOverdue && (
             <span className="text-xs px-1 py-0.5 bg-gray-200 text-gray-500 rounded">paused</span>
           )}
         </div>
         <div className="text-xs text-gray-400 flex-shrink-0 ml-2">
           {formatRelativeTime(config.last_executed_at)}
           {!isPaused && config.next_run_at && (
-            <span className="ml-1">| {isRunning ? 'running' : formatNextRun(config.next_run_at)}</span>
+            <span className={`ml-1 ${probeIsOverdue ? 'text-orange-600' : ''}`}>
+              | {isRunning ? 'running' : formatNextRun(config.next_run_at, config.timeout_seconds)}
+            </span>
           )}
         </div>
       </div>
