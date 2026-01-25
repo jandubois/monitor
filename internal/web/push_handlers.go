@@ -24,12 +24,14 @@ type RegisterRequest struct {
 
 // RegisterProbeType describes a probe type available on a watcher.
 type RegisterProbeType struct {
-	Name           string         `json:"name"`
-	Version        string         `json:"version"`
-	Description    string         `json:"description"`
-	Arguments      map[string]any `json:"arguments"`
-	ExecutablePath string         `json:"executable_path"`
-	Subcommand     string         `json:"subcommand,omitempty"`
+	Name            string         `json:"name"`
+	Version         string         `json:"version"`
+	Description     string         `json:"description"`
+	Arguments       map[string]any `json:"arguments"`
+	Output          map[string]any `json:"output,omitempty"`
+	DefaultInterval string         `json:"default_interval,omitempty"`
+	ExecutablePath  string         `json:"executable_path"`
+	Subcommand      string         `json:"subcommand,omitempty"`
 }
 
 // HeartbeatRequest is sent periodically by watchers.
@@ -43,6 +45,7 @@ type ResultRequest struct {
 	Watcher       string         `json:"watcher"`
 	ProbeConfigID int            `json:"probe_config_id"`
 	Status        string         `json:"status"`
+	Summary       string         `json:"summary,omitempty"`
 	Message       string         `json:"message"`
 	Metrics       map[string]any `json:"metrics"`
 	Data          map[string]any `json:"data"`
@@ -144,6 +147,10 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		}
 
 		argumentsJSON, _ := json.Marshal(pt.Arguments)
+		var outputJSON []byte
+		if pt.Output != nil {
+			outputJSON, _ = json.Marshal(pt.Output)
+		}
 
 		// Upsert probe type - check if it exists first
 		var probeTypeID int
@@ -153,9 +160,9 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			// Insert new probe type
 			result, err := s.db.DB().ExecContext(ctx, `
-				INSERT INTO probe_types (name, version, description, arguments, registered_at)
-				VALUES (?, ?, ?, ?, ?)
-			`, pt.Name, pt.Version, pt.Description, string(argumentsJSON), now)
+				INSERT INTO probe_types (name, version, description, arguments, output, default_interval, registered_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+			`, pt.Name, pt.Version, pt.Description, string(argumentsJSON), string(outputJSON), pt.DefaultInterval, now)
 			if err != nil {
 				slog.Error("failed to register probe type", "name", pt.Name, "error", err)
 				continue
@@ -165,9 +172,9 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// Update existing probe type
 			_, err = s.db.DB().ExecContext(ctx, `
-				UPDATE probe_types SET description = ?, arguments = ?, updated_at = ?
+				UPDATE probe_types SET description = ?, arguments = ?, output = ?, default_interval = ?, updated_at = ?
 				WHERE id = ?
-			`, pt.Description, string(argumentsJSON), now, probeTypeID)
+			`, pt.Description, string(argumentsJSON), string(outputJSON), pt.DefaultInterval, now, probeTypeID)
 			if err != nil {
 				slog.Error("failed to update probe type", "name", pt.Name, "error", err)
 				continue
@@ -273,9 +280,9 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := s.db.DB().ExecContext(ctx, `
-		INSERT INTO probe_results (probe_config_id, watcher_id, status, message, metrics, data, duration_ms, next_run_at, scheduled_at, executed_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, req.ProbeConfigID, watcherID, req.Status, req.Message, string(metricsJSON), string(dataJSON), req.DurationMs, nextRunAtStr, req.ScheduledAt.UTC().Format(db.SQLiteTimeFormat), req.ExecutedAt.UTC().Format(db.SQLiteTimeFormat))
+		INSERT INTO probe_results (probe_config_id, watcher_id, status, summary, message, metrics, data, duration_ms, next_run_at, scheduled_at, executed_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, req.ProbeConfigID, watcherID, req.Status, req.Summary, req.Message, string(metricsJSON), string(dataJSON), req.DurationMs, nextRunAtStr, req.ScheduledAt.UTC().Format(db.SQLiteTimeFormat), req.ExecutedAt.UTC().Format(db.SQLiteTimeFormat))
 	if err != nil {
 		slog.Error("failed to insert result", "probe_config_id", req.ProbeConfigID, "error", err)
 		http.Error(w, "failed to record result", http.StatusInternalServerError)
@@ -403,8 +410,8 @@ func (s *Server) handlePushAlert(w http.ResponseWriter, r *http.Request) {
 	// Insert result (no watcher_id for external alerts)
 	dataJSON, _ := json.Marshal(req.Data)
 	_, err = s.db.DB().ExecContext(ctx, `
-		INSERT INTO probe_results (probe_config_id, status, message, data, duration_ms, scheduled_at, executed_at)
-		VALUES (?, ?, ?, ?, 0, ?, ?)
+		INSERT INTO probe_results (probe_config_id, status, summary, message, data, duration_ms, scheduled_at, executed_at)
+		VALUES (?, ?, NULL, ?, ?, 0, ?, ?)
 	`, configID, req.Status, req.Message, string(dataJSON), now, now)
 	if err != nil {
 		http.Error(w, "failed to record alert", http.StatusInternalServerError)

@@ -1,0 +1,2 @@
+-- SQLite doesn't support DROP COLUMN directly
+-- These columns will remain but be unused if downgrading

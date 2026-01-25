@@ -42,12 +42,14 @@ type RegisterRequest struct {
 
 // RegisterProbeType describes a probe type available on this watcher.
 type RegisterProbeType struct {
-	Name           string         `json:"name"`
-	Version        string         `json:"version"`
-	Description    string         `json:"description"`
-	Arguments      map[string]any `json:"arguments"`
-	ExecutablePath string         `json:"executable_path"`
-	Subcommand     string         `json:"subcommand,omitempty"`
+	Name            string         `json:"name"`
+	Version         string         `json:"version"`
+	Description     string         `json:"description"`
+	Arguments       map[string]any `json:"arguments"`
+	Output          map[string]any `json:"output,omitempty"`
+	DefaultInterval string         `json:"default_interval,omitempty"`
+	ExecutablePath  string         `json:"executable_path"`
+	Subcommand      string         `json:"subcommand,omitempty"`
 }
 
 // RegisterResponse is returned from registration.
@@ -68,6 +70,7 @@ type ResultRequest struct {
 	Watcher       string         `json:"watcher"`
 	ProbeConfigID int            `json:"probe_config_id"`
 	Status        string         `json:"status"`
+	Summary       string         `json:"summary,omitempty"`
 	Message       string         `json:"message"`
 	Metrics       map[string]any `json:"metrics"`
 	Data          map[string]any `json:"data"`
@@ -241,6 +244,7 @@ func (w *HTTPResultWriter) WriteResult(ctx context.Context, cfg *ProbeConfig, re
 		Watcher:       w.watcherName,
 		ProbeConfigID: cfg.ID,
 		Status:        string(result.Status),
+		Summary:       result.Summary,
 		Message:       result.Message,
 		Metrics:       result.Metrics,
 		Data:          result.Data,

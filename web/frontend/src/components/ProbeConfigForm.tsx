@@ -31,6 +31,13 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
 
   const selectedType = probeTypes.find((pt) => pt.id === probeTypeId);
 
+  // When probe type changes (for new probes), use the default_interval if available
+  useEffect(() => {
+    if (!editingConfig && selectedType?.default_interval) {
+      setInterval(selectedType.default_interval);
+    }
+  }, [editingConfig, selectedType]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -189,7 +196,12 @@ export function ProbeConfigForm({ probeTypes, watchers, editingConfig, initialPr
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Interval</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Interval
+                  {selectedType?.default_interval && (
+                    <span className="text-gray-400 font-normal ml-1">(default: {selectedType.default_interval})</span>
+                  )}
+                </label>
                 <select
                   value={interval}
                   onChange={(e) => setInterval(e.target.value)}

@@ -78,35 +78,42 @@ export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseT
             {config.watcher_name && <span> @ {config.watcher_name}</span>}
           </p>
 
-          {config.last_message && (
+          {(config.last_summary || config.last_message) && (
             <div className="mt-2">
-              <button
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
-              >
-                <svg
-                  className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                {isExpanded ? 'Hide details' : 'Show details'}
-              </button>
-              {isExpanded && (
-                <div className="mt-2 text-sm text-gray-700 prose prose-sm max-w-none">
-                  <ReactMarkdown
-                    rehypePlugins={[rehypeRaw]}
-                    components={{
-                      a: ({ href, children }) => (
-                        <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
-                      ),
-                    }}
+              <p className="text-sm text-gray-600">
+                {config.last_summary || config.last_message?.split('\n')[0]}
+              </p>
+              {config.last_message && config.last_message.includes('\n') && (
+                <>
+                  <button
+                    onClick={() => setIsExpanded(!isExpanded)}
+                    className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 mt-1"
                   >
-                    {config.last_message}
-                  </ReactMarkdown>
-                </div>
+                    <svg
+                      className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    {isExpanded ? 'Hide details' : 'Show details'}
+                  </button>
+                  {isExpanded && (
+                    <div className="mt-2 text-sm text-gray-700 prose prose-sm max-w-none">
+                      <ReactMarkdown
+                        rehypePlugins={[rehypeRaw]}
+                        components={{
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+                          ),
+                        }}
+                      >
+                        {config.last_message}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

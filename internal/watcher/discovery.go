@@ -76,18 +76,21 @@ func (d *Discovery) DiscoverAll(ctx context.Context) ([]RegisterProbeType, error
 
 		for _, desc := range descs {
 			argsMap := descriptionArgsToMap(desc.Arguments)
+			outputMap := outputSchemaToMap(desc.Output)
 			version := desc.Version
 			if version == "" {
 				version = "0.0.0"
 			}
 
 			probeTypes = append(probeTypes, RegisterProbeType{
-				Name:           desc.Name,
-				Version:        version,
-				Description:    desc.Description,
-				Arguments:      argsMap,
-				ExecutablePath: absPath,
-				Subcommand:     desc.Subcommand,
+				Name:            desc.Name,
+				Version:         version,
+				Description:     desc.Description,
+				Arguments:       argsMap,
+				Output:          outputMap,
+				DefaultInterval: desc.DefaultInterval,
+				ExecutablePath:  absPath,
+				Subcommand:      desc.Subcommand,
 			})
 
 			slog.Info("discovered probe", "name", desc.Name, "version", version, "subcommand", desc.Subcommand)
@@ -112,18 +115,21 @@ func (d *Discovery) discoverBuiltIn() ([]RegisterProbeType, error) {
 	var probeTypes []RegisterProbeType
 	for _, desc := range probes.GetAllDescriptions() {
 		argsMap := descriptionArgsToMap(desc.Arguments)
+		outputMap := outputSchemaToMap(desc.Output)
 		version := desc.Version
 		if version == "" {
 			version = "0.0.0"
 		}
 
 		probeTypes = append(probeTypes, RegisterProbeType{
-			Name:           desc.Name,
-			Version:        version,
-			Description:    desc.Description,
-			Arguments:      argsMap,
-			ExecutablePath: absPath,
-			Subcommand:     desc.Subcommand,
+			Name:            desc.Name,
+			Version:         version,
+			Description:     desc.Description,
+			Arguments:       argsMap,
+			Output:          outputMap,
+			DefaultInterval: desc.DefaultInterval,
+			ExecutablePath:  absPath,
+			Subcommand:      desc.Subcommand,
 		})
 
 		slog.Info("discovered built-in probe", "name", desc.Name, "version", version, "subcommand", desc.Subcommand)
@@ -170,6 +176,45 @@ func descriptionArgsToMap(args probe.Arguments) map[string]any {
 		argsMap["optional"] = optMap
 	}
 	return argsMap
+}
+
+// outputSchemaToMap converts probe.OutputSchema to map[string]any format.
+func outputSchemaToMap(output probe.OutputSchema) map[string]any {
+	if len(output.Metrics) == 0 && len(output.Data) == 0 {
+		return nil
+	}
+
+	outputMap := make(map[string]any)
+	if len(output.Metrics) > 0 {
+		metricsMap := make(map[string]any)
+		for k, v := range output.Metrics {
+			spec := map[string]any{
+				"type": v.Type,
+			}
+			if v.Unit != "" {
+				spec["unit"] = v.Unit
+			}
+			if v.Description != "" {
+				spec["description"] = v.Description
+			}
+			metricsMap[k] = spec
+		}
+		outputMap["metrics"] = metricsMap
+	}
+	if len(output.Data) > 0 {
+		dataMap := make(map[string]any)
+		for k, v := range output.Data {
+			spec := map[string]any{
+				"type": v.Type,
+			}
+			if v.Description != "" {
+				spec["description"] = v.Description
+			}
+			dataMap[k] = spec
+		}
+		outputMap["data"] = dataMap
+	}
+	return outputMap
 }
 
 func (d *Discovery) describeProbe(ctx context.Context, path string) ([]probe.Description, error) {

@@ -186,6 +186,9 @@ export function ProbeDetail({ config: initialConfig, onBack, onConfigUpdated }: 
                   <StatusBadge status={result.status} size="sm" />
                   <span className="text-sm text-gray-500">{formatDate(result.executed_at)}</span>
                 </div>
+                {result.summary && (
+                  <p className="text-sm font-medium text-gray-700 mb-1">{result.summary}</p>
+                )}
                 <div className="text-sm text-gray-700 prose prose-sm max-w-none">
                   <ReactMarkdown
                     rehypePlugins={[rehypeRaw]}

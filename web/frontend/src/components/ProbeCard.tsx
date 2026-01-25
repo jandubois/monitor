@@ -67,8 +67,10 @@ export function ProbeCard({ config, onStatusClick, onEdit, onRerun, onPauseToggl
         </button>
       </div>
 
-      {config.last_message && (
-        <p className="mt-2 text-sm text-gray-600 line-clamp-2">{config.last_message}</p>
+      {(config.last_summary || config.last_message) && (
+        <p className="mt-2 text-sm text-gray-600 line-clamp-2">
+          {config.last_summary || config.last_message?.split('\n')[0]}
+        </p>
       )}
 
       <div className="mt-3 flex items-center justify-between">

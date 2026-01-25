@@ -90,7 +90,8 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		watcherID, _ := strconv.Atoi(watcherIDStr)
 		rows, err = s.db.DB().QueryContext(ctx, `
 			SELECT pt.id, pt.name, pt.description, pt.version, pt.arguments,
-			       wpt.executable_path, pt.registered_at, pt.updated_at
+			       pt.output, pt.default_interval, wpt.executable_path,
+			       pt.registered_at, pt.updated_at
 			FROM probe_types pt
 			JOIN watcher_probe_types wpt ON wpt.probe_type_id = pt.id
 			WHERE wpt.watcher_id = ?
@@ -99,7 +100,8 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// No filter - return all probe types without executable_path
 		rows, err = s.db.DB().QueryContext(ctx, `
-			SELECT id, name, description, version, arguments, registered_at, updated_at
+			SELECT id, name, description, version, arguments, output, default_interval,
+			       registered_at, updated_at
 			FROM probe_types
 			ORDER BY name, version
 		`)
@@ -115,7 +117,8 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		var id int
 		var name, version string
 		var description *string
-		var arguments db.JSONMap
+		var arguments, output db.JSONMap
+		var defaultInterval *string
 		var registeredAt db.NullTime
 		var updatedAt db.NullTime
 
@@ -123,13 +126,13 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 
 		if watcherIDStr != "" {
 			var executablePath string
-			if err := rows.Scan(&id, &name, &description, &version, &arguments, &executablePath, &registeredAt, &updatedAt); err != nil {
+			if err := rows.Scan(&id, &name, &description, &version, &arguments, &output, &defaultInterval, &executablePath, &registeredAt, &updatedAt); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 			pt["executable_path"] = executablePath
 		} else {
-			if err := rows.Scan(&id, &name, &description, &version, &arguments, &registeredAt, &updatedAt); err != nil {
+			if err := rows.Scan(&id, &name, &description, &version, &arguments, &output, &defaultInterval, &registeredAt, &updatedAt); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
@@ -144,6 +147,12 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		}
 		pt["version"] = version
 		pt["arguments"] = arguments
+		if output != nil {
+			pt["output"] = output
+		}
+		if defaultInterval != nil {
+			pt["default_interval"] = *defaultInterval
+		}
 		if registeredAt.Valid {
 			pt["registered_at"] = registeredAt.Time
 		}
@@ -387,6 +396,7 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 		       pc.watcher_id, w.name as watcher_name, pc.next_run_at, pc.group_path, pc.keywords,
 		       pc.created_at, pc.updated_at,
 		       (SELECT status FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_status,
+		       (SELECT summary FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_summary,
 		       (SELECT message FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_message,
 		       (SELECT executed_at FROM probe_results WHERE probe_config_id = pc.id ORDER BY executed_at DESC LIMIT 1) as last_executed_at
 		FROM probe_configs pc
@@ -437,14 +447,14 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 		var nextRunAt db.NullTime
 		var createdAt db.NullTime
 		var updatedAt, lastExecutedAt db.NullTime
-		var lastStatus, lastMessage *string
+		var lastStatus, lastSummary, lastMessage *string
 
 		if err := rows.Scan(
 			&id, &probeTypeID, &probeTypeName, &name, &enabled,
 			&arguments, &interval, &timeoutSeconds, &notificationChannels,
 			&watcherID, &watcherName, &nextRunAt, &groupPath, &keywords,
 			&createdAt, &updatedAt,
-			&lastStatus, &lastMessage, &lastExecutedAt,
+			&lastStatus, &lastSummary, &lastMessage, &lastExecutedAt,
 		); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -482,6 +492,9 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 		}
 		if lastStatus != nil {
 			config["last_status"] = *lastStatus
+		}
+		if lastSummary != nil {
+			config["last_summary"] = *lastSummary
 		}
 		if lastMessage != nil {
 			config["last_message"] = *lastMessage
@@ -789,8 +802,9 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 	offset := r.URL.Query().Get("offset")
 
 	query := `
-		SELECT pr.id, pr.probe_config_id, pc.name as config_name, pr.status, pr.message,
-		       pr.metrics, pr.data, pr.duration_ms, pr.scheduled_at, pr.executed_at, pr.recorded_at
+		SELECT pr.id, pr.probe_config_id, pc.name as config_name, pr.status, pr.summary,
+		       pr.message, pr.metrics, pr.data, pr.duration_ms, pr.scheduled_at,
+		       pr.executed_at, pr.recorded_at
 		FROM probe_results pr
 		JOIN probe_configs pc ON pc.id = pr.probe_config_id
 		WHERE 1=1
@@ -837,12 +851,12 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, probeConfigID, durationMs int
 		var configName, statusVal string
-		var message *string
+		var summary, message *string
 		var metrics, data db.JSONMap
 		var scheduledAt, executedAt, recordedAt db.NullTime
 
-		if err := rows.Scan(&id, &probeConfigID, &configName, &statusVal, &message,
-			&metrics, &data, &durationMs, &scheduledAt, &executedAt, &recordedAt); err != nil {
+		if err := rows.Scan(&id, &probeConfigID, &configName, &statusVal, &summary,
+			&message, &metrics, &data, &durationMs, &scheduledAt, &executedAt, &recordedAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -855,6 +869,9 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 			"metrics":         metrics,
 			"data":            data,
 			"duration_ms":     durationMs,
+		}
+		if summary != nil {
+			result["summary"] = *summary
 		}
 		if message != nil {
 			result["message"] = *message
@@ -883,7 +900,7 @@ func (s *Server) handleGetResults(w http.ResponseWriter, r *http.Request) {
 	configID := r.PathValue("config_id")
 
 	rows, err := s.db.DB().QueryContext(ctx, `
-		SELECT id, probe_config_id, status, message, metrics, data,
+		SELECT id, probe_config_id, status, summary, message, metrics, data,
 		       duration_ms, scheduled_at, executed_at, recorded_at
 		FROM probe_results
 		WHERE probe_config_id = ?
@@ -900,11 +917,11 @@ func (s *Server) handleGetResults(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, probeConfigID, durationMs int
 		var statusVal string
-		var message *string
+		var summary, message *string
 		var metrics, data db.JSONMap
 		var scheduledAt, executedAt, recordedAt db.NullTime
 
-		if err := rows.Scan(&id, &probeConfigID, &statusVal, &message, &metrics, &data,
+		if err := rows.Scan(&id, &probeConfigID, &statusVal, &summary, &message, &metrics, &data,
 			&durationMs, &scheduledAt, &executedAt, &recordedAt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -917,6 +934,9 @@ func (s *Server) handleGetResults(w http.ResponseWriter, r *http.Request) {
 			"metrics":         metrics,
 			"data":            data,
 			"duration_ms":     durationMs,
+		}
+		if summary != nil {
+			result["summary"] = *summary
 		}
 		if message != nil {
 			result["message"] = *message

@@ -26,6 +26,8 @@ export interface ProbeType {
     required?: Record<string, ArgumentSpec>;
     optional?: Record<string, ArgumentSpec>;
   };
+  output?: OutputSchema;
+  default_interval?: string;
   executable_path?: string;
   registered_at: string;
   updated_at: string | null;
@@ -36,6 +38,22 @@ export interface ArgumentSpec {
   description: string;
   default?: unknown;
   enum?: string[];
+}
+
+export interface MetricSpec {
+  type: string;
+  unit?: string;
+  description?: string;
+}
+
+export interface DataSpec {
+  type: string;
+  description?: string;
+}
+
+export interface OutputSchema {
+  metrics?: Record<string, MetricSpec>;
+  data?: Record<string, DataSpec>;
 }
 
 export interface ProbeConfig {
@@ -56,6 +74,7 @@ export interface ProbeConfig {
   created_at: string;
   updated_at: string | null;
   last_status?: ProbeStatus;
+  last_summary?: string;
   last_message?: string;
   last_executed_at?: string;
 }
@@ -66,6 +85,7 @@ export interface ProbeResult {
   config_name?: string;
   watcher_id?: number;
   status: ProbeStatus;
+  summary?: string;
   message: string;
   metrics: Record<string, unknown> | null;
   data: Record<string, unknown> | null;
