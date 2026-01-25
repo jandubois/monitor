@@ -18,6 +18,7 @@ type Description struct {
 	Version         string       `json:"version"`
 	Arguments       Arguments    `json:"arguments"`
 	Output          OutputSchema `json:"output,omitempty"`
+	DefaultName     string       `json:"default_name,omitempty"`
 	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
@@ -83,6 +84,7 @@ func printDescription() {
 		Name:            "command",
 		Description:     "Run a command and check its exit code",
 		Version:         "1.0.0",
+		DefaultName:     "Command on {{Watcher}}",
 		DefaultInterval: "5m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{

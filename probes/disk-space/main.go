@@ -14,6 +14,7 @@ type Description struct {
 	Version         string       `json:"version"`
 	Arguments       Arguments    `json:"arguments"`
 	Output          OutputSchema `json:"output,omitempty"`
+	DefaultName     string       `json:"default_name,omitempty"`
 	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
@@ -77,6 +78,7 @@ func printDescription() {
 		Name:            "disk-space",
 		Description:     "Check available disk space on a path",
 		Version:         "1.0.0",
+		DefaultName:     "Disk: {{path}} on {{Watcher}}",
 		DefaultInterval: "1h",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{

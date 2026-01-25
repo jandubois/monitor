@@ -17,6 +17,7 @@ type Description struct {
 	Version         string       `json:"version"`
 	Arguments       Arguments    `json:"arguments"`
 	Output          OutputSchema `json:"output,omitempty"`
+	DefaultName     string       `json:"default_name,omitempty"`
 	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
@@ -98,6 +99,7 @@ func printDescription() {
 		Name:            "git-status",
 		Description:     "Check git repositories for uncommitted changes and unpushed commits",
 		Version:         "1.0.0",
+		DefaultName:     "Git: {{path}}",
 		DefaultInterval: "15m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{

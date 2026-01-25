@@ -95,6 +95,7 @@ type registerProbe struct {
 	Description     string         `json:"description"`
 	Arguments       map[string]any `json:"arguments"`
 	Output          map[string]any `json:"output,omitempty"`
+	DefaultName     string         `json:"default_name,omitempty"`
 	DefaultInterval string         `json:"default_interval,omitempty"`
 	ExecutablePath  string         `json:"executable_path"`
 	Subcommand      string         `json:"subcommand,omitempty"`
@@ -200,6 +201,7 @@ func (mw *metaWatcher) register(ctx context.Context) error {
 				Name:            "watcher-health",
 				Version:         "1.0.0",
 				Description:     "Monitor watcher health and events",
+				DefaultName:     "Monitor: {{watcher_name}}",
 				DefaultInterval: mw.interval.String(),
 				ExecutablePath:  "internal",
 				Arguments: map[string]any{

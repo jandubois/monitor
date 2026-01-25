@@ -19,6 +19,7 @@ func GetDescription() probe.Description {
 		Description:     "Check available disk space on a path",
 		Version:         "1.0.0",
 		Subcommand:      Name,
+		DefaultName:     "Disk: {{path}} on {{Watcher}}",
 		DefaultInterval: "1h",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{

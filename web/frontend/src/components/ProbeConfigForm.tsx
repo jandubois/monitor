@@ -1,7 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { ProbeConfig, Watcher } from '../api/types';
+import type { ProbeConfig, Watcher, ProbeType } from '../api/types';
+
+// Expand a template string with the given context
+// Supports {{key}} syntax for both probe arguments and builtins (Watcher, ProbeName, ProbeType)
+function expandTemplate(template: string, args: Record<string, string>, watcher?: Watcher, probeType?: ProbeType): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => {
+    // Builtins use PascalCase
+    if (key === 'Watcher') return watcher?.name ?? '';
+    if (key === 'ProbeName') return probeType?.name ?? '';
+    if (key === 'ProbeType') return probeType?.name ?? '';
+    // Probe arguments use the provided args
+    return args[key] ?? '';
+  });
+}
 
 interface ProbeConfigFormProps {
   watchers: Watcher[];
@@ -53,6 +66,23 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, i
       setInterval(selectedType.default_interval);
     }
   }, [editingConfig, selectedType]);
+
+  const selectedWatcher = watchers.find(w => w.id === watcherId);
+
+  // Generate default name from template
+  const generateDefaultName = useCallback(() => {
+    if (!selectedType?.default_name) return '';
+    return expandTemplate(selectedType.default_name, args, selectedWatcher, selectedType);
+  }, [selectedType, args, selectedWatcher]);
+
+  // Auto-populate name when template inputs change (for new probes only)
+  useEffect(() => {
+    if (editingConfig) return; // Don't auto-update name when editing
+    const defaultName = generateDefaultName();
+    if (defaultName) {
+      setName(defaultName);
+    }
+  }, [editingConfig, generateDefaultName]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

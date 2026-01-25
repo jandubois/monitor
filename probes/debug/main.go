@@ -13,6 +13,7 @@ type Description struct {
 	Version         string       `json:"version"`
 	Arguments       Arguments    `json:"arguments"`
 	Output          OutputSchema `json:"output,omitempty"`
+	DefaultName     string       `json:"default_name,omitempty"`
 	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
@@ -112,6 +113,7 @@ func printDescription() {
 		Name:            "debug",
 		Description:     "Debug probe for testing failure modes",
 		Version:         "1.0.0",
+		DefaultName:     "Debug ({{mode}})",
 		DefaultInterval: "1m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{},

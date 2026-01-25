@@ -22,6 +22,7 @@ func GetDescription() probe.Description {
 		Description:     "Run a command and check its exit code",
 		Version:         "1.0.0",
 		Subcommand:      Name,
+		DefaultName:     "Command on {{Watcher}}",
 		DefaultInterval: "5m",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{

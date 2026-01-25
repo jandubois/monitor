@@ -40,6 +40,7 @@ func GetDescription() probe.Description {
 		Description:     "Check git repositories for uncommitted changes and unpushed commits",
 		Version:         "1.0.0",
 		Subcommand:      Name,
+		DefaultName:     "Git: {{path}}",
 		DefaultInterval: "15m",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{

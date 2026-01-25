@@ -17,6 +17,7 @@ if [[ "${1:-}" == "--describe" ]]; then
   "name": "rd-releases",
   "description": "Check if the latest Rancher Desktop release is in the update channel",
   "version": "1.0.0",
+  "default_name": "RD Releases",
   "default_interval": "6h",
   "arguments": {
     "optional": {

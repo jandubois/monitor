@@ -27,6 +27,7 @@ export interface ProbeType {
     optional?: Record<string, ArgumentSpec>;
   };
   output?: OutputSchema;
+  default_name?: string;
   default_interval?: string;
   executable_path?: string;
   registered_at: string;

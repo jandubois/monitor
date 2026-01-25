@@ -29,6 +29,7 @@ type Description struct {
 	Version         string       `json:"version"` // Increment when Output schema changes
 	Arguments       Arguments    `json:"arguments"`
 	Output          OutputSchema `json:"output,omitempty"`           // Documents expected metrics/data fields
+	DefaultName     string       `json:"default_name,omitempty"`     // Go template for default config name (e.g., "Disk: {{.path}}")
 	DefaultInterval string       `json:"default_interval,omitempty"` // Suggested run frequency (e.g., "1h", "5m")
 	Subcommand      string       `json:"subcommand,omitempty"`       // If set, execute as: binary <subcommand> --args
 }
