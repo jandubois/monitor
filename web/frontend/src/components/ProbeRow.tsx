@@ -124,8 +124,8 @@ function ResumeIcon() {
 export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseToggle }: ProbeRowProps) {
   const isPaused = !config.enabled;
   const [isExpanded, setIsExpanded] = useState(false);
-  const hasDetails = config.last_message && config.last_message.includes('\n');
   const summary = config.last_summary || config.last_message?.split('\n')[0] || '';
+  const hasDetails = config.last_message && config.last_message !== summary;
 
   return (
     <div className={`border-b border-gray-100 ${isPaused ? 'opacity-50' : ''}`}>

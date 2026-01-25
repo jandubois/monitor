@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jandubois/monitor/internal/db"
@@ -98,12 +99,14 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 			ORDER BY pt.name, pt.version
 		`, watcherID)
 	} else {
-		// No filter - return all probe types without executable_path
+		// No filter - return all probe types with all watcher_ids
 		rows, err = s.db.DB().QueryContext(ctx, `
-			SELECT id, name, description, version, arguments, output, default_interval,
-			       default_name, registered_at, updated_at
-			FROM probe_types
-			ORDER BY name, version
+			SELECT pt.id, pt.name, pt.description, pt.version, pt.arguments,
+			       pt.output, pt.default_interval, pt.default_name,
+			       pt.registered_at, pt.updated_at,
+			       (SELECT GROUP_CONCAT(watcher_id) FROM watcher_probe_types WHERE probe_type_id = pt.id) as watcher_ids
+			FROM probe_types pt
+			ORDER BY pt.name, pt.version
 		`)
 	}
 	if err != nil {
@@ -132,9 +135,19 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 			}
 			pt["executable_path"] = executablePath
 		} else {
-			if err := rows.Scan(&id, &name, &description, &version, &arguments, &output, &defaultInterval, &defaultName, &registeredAt, &updatedAt); err != nil {
+			var watcherIDsStr *string
+			if err := rows.Scan(&id, &name, &description, &version, &arguments, &output, &defaultInterval, &defaultName, &registeredAt, &updatedAt, &watcherIDsStr); err != nil {
 				http.Error(w, err.Error(), http.StatusInternalServerError)
 				return
+			}
+			if watcherIDsStr != nil && *watcherIDsStr != "" {
+				var watcherIDs []int
+				for _, idStr := range strings.Split(*watcherIDsStr, ",") {
+					if wid, err := strconv.Atoi(idStr); err == nil {
+						watcherIDs = append(watcherIDs, wid)
+					}
+				}
+				pt["watcher_ids"] = watcherIDs
 			}
 		}
 

@@ -30,6 +30,7 @@ export interface ProbeType {
   default_name?: string;
   default_interval?: string;
   executable_path?: string;
+  watcher_ids?: number[];
   registered_at: string;
   updated_at: string | null;
 }

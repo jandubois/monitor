@@ -22,6 +22,7 @@ interface DashboardProps {
 }
 
 export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: DashboardProps) {
+  const [showForm, setShowForm] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
   const [keywordFilter, setKeywordFilter] = useState('');
   const [runningProbes, setRunningProbes] = useState<Set<number>>(new Set());
@@ -85,7 +86,7 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
   const { data: watchers } = useQuery({
     queryKey: ['watchers'],
     queryFn: () => api.getWatchers(),
-    enabled: !!editingConfig,
+    enabled: showForm,
   });
 
   // Mark a probe as running and poll for completion
@@ -192,12 +193,20 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
         <h1 className="text-2xl font-bold text-gray-900">
           Monitor Dashboard{status?.server_name ? ` on ${status.server_name}` : ''}
         </h1>
-        <button
-          onClick={onConfigClick}
-          className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
-        >
-          Configure
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setEditingConfig(null); setShowForm(true); }}
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            Add Probe
+          </button>
+          <button
+            onClick={onConfigClick}
+            className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
+          >
+            Configure
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -345,7 +354,7 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
                         config={config}
                         isRunning={runningProbes.has(config.id)}
                         onClick={() => onProbeClick(config)}
-                        onEdit={() => setEditingConfig(config)}
+                        onEdit={() => { setEditingConfig(config); setShowForm(true); }}
                         onRerun={() => rerunMutation.mutate(config.id)}
                         onPauseToggle={() => pauseToggleMutation.mutate({
                           id: config.id,
@@ -361,12 +370,13 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
         </div>
       )}
 
-      {editingConfig && watchers && (
+      {showForm && watchers && (
         <ProbeConfigForm
           watchers={watchers}
           editingConfig={editingConfig}
-          onClose={() => setEditingConfig(null)}
+          onClose={() => { setShowForm(false); setEditingConfig(null); }}
           onSaved={() => {
+            setShowForm(false);
             setEditingConfig(null);
             queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
           }}

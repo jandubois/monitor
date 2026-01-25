@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { ProbeConfig, Watcher, ProbeType } from '../api/types';
@@ -21,17 +21,22 @@ interface ProbeConfigFormProps {
   watchers: Watcher[];
   editingConfig: ProbeConfig | null;
   initialProbeTypeId?: number;
-  initialWatcherId?: number;
   onClose: () => void;
   onSaved: () => void;
   onRerun?: (id: number) => void;
 }
 
-export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, initialWatcherId, onClose, onSaved, onRerun }: ProbeConfigFormProps) {
-  const [name, setName] = useState(editingConfig?.name ?? '');
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(!!editingConfig); // Treat editing as manual
-  const [watcherId, setWatcherId] = useState<number | undefined>(editingConfig?.watcher_id ?? initialWatcherId ?? watchers[0]?.id);
+export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, onClose, onSaved, onRerun }: ProbeConfigFormProps) {
+  // Fetch all probe types (not filtered by watcher)
+  const { data: allProbeTypes = [] } = useQuery({
+    queryKey: ['probeTypes'],
+    queryFn: () => api.getProbeTypes(),
+  });
+
   const [probeTypeId, setProbeTypeId] = useState<number>(editingConfig?.probe_type_id ?? initialProbeTypeId ?? 0);
+  const [name, setName] = useState(editingConfig?.name ?? '');
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(!!editingConfig);
+  const [watcherId, setWatcherId] = useState<number | undefined>(editingConfig?.watcher_id);
   const [enabled, setEnabled] = useState(editingConfig?.enabled ?? true);
   const [interval, setInterval] = useState(editingConfig?.interval ?? '5m');
   const [timeout, setTimeout] = useState(editingConfig?.timeout_seconds ?? 60);
@@ -45,22 +50,30 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, i
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Fetch probe types for the selected watcher
-  const { data: probeTypes = [] } = useQuery({
-    queryKey: ['probeTypes', watcherId],
-    queryFn: () => api.getProbeTypes(watcherId),
-    enabled: !!watcherId,
-  });
+  const selectedType = allProbeTypes.find((pt) => pt.id === probeTypeId);
 
-  const selectedType = probeTypes.find((pt) => pt.id === probeTypeId);
+  // Filter watchers to only those that support the selected probe type
+  const availableWatchers = useMemo(() => {
+    if (!selectedType?.watcher_ids) return [];
+    return watchers.filter(w => selectedType.watcher_ids!.includes(w.id));
+  }, [watchers, selectedType]);
 
-  // When watcher changes, reset probe type to first available (for new configs)
+  // Set initial probe type when data loads
   useEffect(() => {
-    if (!editingConfig && probeTypes.length > 0 && !probeTypes.find(pt => pt.id === probeTypeId)) {
-      setProbeTypeId(probeTypes[0].id);
-      setArgs({});
+    if (!editingConfig && allProbeTypes.length > 0 && probeTypeId === 0) {
+      const initial = initialProbeTypeId && allProbeTypes.find(pt => pt.id === initialProbeTypeId);
+      setProbeTypeId(initial ? initial.id : allProbeTypes[0].id);
     }
-  }, [editingConfig, probeTypes, probeTypeId]);
+  }, [editingConfig, allProbeTypes, probeTypeId, initialProbeTypeId]);
+
+  // When probe type changes, reset watcher to first available
+  useEffect(() => {
+    if (!editingConfig && availableWatchers.length > 0) {
+      if (!watcherId || !availableWatchers.find(w => w.id === watcherId)) {
+        setWatcherId(availableWatchers[0].id);
+      }
+    }
+  }, [editingConfig, availableWatchers, watcherId]);
 
   // When probe type changes (for new probes), use the default_interval if available
   useEffect(() => {
@@ -189,6 +202,54 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, i
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Two-column layout for main fields */}
             <div className="grid grid-cols-2 gap-4">
+              {/* Probe Type - first, and disabled when editing */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Probe Type</label>
+                {editingConfig ? (
+                  <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
+                    {editingConfig.probe_type_name}
+                  </div>
+                ) : (
+                  <select
+                    value={probeTypeId}
+                    onChange={(e) => {
+                      setProbeTypeId(Number(e.target.value));
+                      setArgs({});
+                    }}
+                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                  >
+                    {allProbeTypes.map((pt) => (
+                      <option key={pt.id} value={pt.id}>{pt.name} (v{pt.version})</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {/* Watcher - filtered by probe type */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Watcher</label>
+                {editingConfig ? (
+                  <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
+                    {editingConfig.watcher_name}
+                  </div>
+                ) : (
+                  <select
+                    value={watcherId}
+                    onChange={(e) => setWatcherId(Number(e.target.value))}
+                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                    disabled={availableWatchers.length === 0}
+                  >
+                    {availableWatchers.length === 0 ? (
+                      <option value="">No watchers available</option>
+                    ) : (
+                      availableWatchers.map((w) => (
+                        <option key={w.id} value={w.id}>{w.name}</option>
+                      ))
+                    )}
+                  </select>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
                 <input
@@ -205,37 +266,6 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, i
                   placeholder="My probe"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Watcher</label>
-                <select
-                  value={watcherId}
-                  onChange={(e) => setWatcherId(Number(e.target.value))}
-                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                >
-                  {watchers.map((w) => (
-                    <option key={w.id} value={w.id}>{w.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              {!editingConfig && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Probe Type</label>
-                  <select
-                    value={probeTypeId}
-                    onChange={(e) => {
-                      setProbeTypeId(Number(e.target.value));
-                      setArgs({});
-                    }}
-                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                  >
-                    {probeTypes.map((pt) => (
-                      <option key={pt.id} value={pt.id}>{pt.name} (v{pt.version})</option>
-                    ))}
-                  </select>
-                </div>
-              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
@@ -409,7 +439,7 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, i
               </button>
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving || availableWatchers.length === 0}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
               >
                 {saving ? 'Saving...' : 'Save'}
