@@ -170,7 +170,20 @@ export function WatchersGroup() {
 
               {expandedWatcher === w.id && (
                 <div className="border-t border-gray-200 bg-gray-50 px-4 py-3 ml-6">
-                  <h4 className="text-sm font-medium text-gray-700 mb-2">Recent Events</h4>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="text-sm font-medium text-gray-700">Recent Events</h4>
+                    {watcherEvents?.some(e => !e.acknowledged) && (
+                      <button
+                        onClick={() => {
+                          const unacked = watcherEvents?.filter(e => !e.acknowledged) || [];
+                          unacked.forEach(e => acknowledgeEventMutation.mutate(e.id));
+                        }}
+                        className="text-xs text-blue-600 hover:text-blue-800"
+                      >
+                        Acknowledge All
+                      </button>
+                    )}
+                  </div>
                   {watcherEvents?.length === 0 ? (
                     <p className="text-sm text-gray-500">No events recorded</p>
                   ) : (
