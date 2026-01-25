@@ -46,10 +46,34 @@ export function WatchersGroup() {
     enabled: !!expandedWatcher,
   });
 
+  // Fetch probe configs to find watcher-health probes
+  const { data: probeConfigs } = useQuery({
+    queryKey: ['probeConfigs'],
+    queryFn: () => api.getProbeConfigs(),
+  });
+
+  // Trigger all watcher-health probes to refresh status immediately
+  const triggerWatcherHealthProbes = async () => {
+    const healthProbes = probeConfigs?.filter(c => c.probe_type_name === 'watcher-health') || [];
+    for (const probe of healthProbes) {
+      try {
+        await api.triggerProbe(probe.id);
+      } catch {
+        // Ignore errors - probes will run on schedule anyway
+      }
+    }
+    // Refresh probe configs to get updated status
+    setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+    }, 2000);
+  };
+
   const pauseWatcherMutation = useMutation({
     mutationFn: ({ id, paused }: { id: number; paused: boolean }) => api.setWatcherPaused(id, paused),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watchers'] });
+      // Trigger watcher-health probes to update status immediately
+      triggerWatcherHealthProbes();
     },
   });
 
@@ -65,6 +89,8 @@ export function WatchersGroup() {
     mutationFn: (id: number) => api.acknowledgeWatcherEvent(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watcherEvents'] });
+      // Trigger watcher-health probes to update status after acknowledging events
+      triggerWatcherHealthProbes();
     },
   });
 
