@@ -318,33 +318,31 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
               <div key={group} className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
                 <button
                   onClick={() => toggleGroup(group)}
-                  className="w-full px-4 py-3 flex items-center justify-between bg-gray-200 hover:bg-gray-300 transition-colors"
+                  className="w-full px-4 py-3 flex items-center gap-3 bg-gray-200 hover:bg-gray-300 transition-colors"
                 >
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-semibold text-gray-700">{group}</h2>
-                    <div className="flex gap-2 text-xs">
-                      {statusCounts.ok > 0 && (
-                        <span className="text-green-600">{statusCounts.ok} ok</span>
-                      )}
-                      {statusCounts.warning > 0 && (
-                        <span className="text-yellow-600">{statusCounts.warning} warn</span>
-                      )}
-                      {statusCounts.critical > 0 && (
-                        <span className="text-red-600">{statusCounts.critical} crit</span>
-                      )}
-                      {statusCounts.unknown > 0 && (
-                        <span className="text-gray-500">{statusCounts.unknown} unknown</span>
-                      )}
-                    </div>
-                  </div>
                   <svg
-                    className={`w-5 h-5 text-gray-500 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
+                    className={`w-5 h-5 text-gray-500 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
+                  <h2 className="text-lg font-semibold text-gray-700">{group}</h2>
+                  <div className="flex gap-2 text-xs">
+                    {statusCounts.ok > 0 && (
+                      <span className="text-green-600">{statusCounts.ok} ok</span>
+                    )}
+                    {statusCounts.warning > 0 && (
+                      <span className="text-yellow-600">{statusCounts.warning} warn</span>
+                    )}
+                    {statusCounts.critical > 0 && (
+                      <span className="text-red-600">{statusCounts.critical} crit</span>
+                    )}
+                    {statusCounts.unknown > 0 && (
+                      <span className="text-gray-500">{statusCounts.unknown} unknown</span>
+                    )}
+                  </div>
                 </button>
                 {!isCollapsed && (
                   <div className="divide-y divide-gray-300">
