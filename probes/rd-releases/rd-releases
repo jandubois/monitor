@@ -17,6 +17,7 @@ if [[ "${1:-}" == "--describe" ]]; then
   "name": "rd-releases",
   "description": "Check if the latest Rancher Desktop release is in the update channel",
   "version": "1.0.0",
+  "default_interval": "6h",
   "arguments": {
     "optional": {
       "warn_days": {
@@ -29,6 +30,18 @@ if [[ "${1:-}" == "--describe" ]]; then
         "description": "Days after release to go critical if not in update channel",
         "default": 7
       }
+    }
+  },
+  "output": {
+    "metrics": {
+      "days_since_release": {"type": "integer", "unit": "count", "description": "Days since release"},
+      "warn_days": {"type": "integer", "unit": "count", "description": "Warning threshold"},
+      "critical_days": {"type": "integer", "unit": "count", "description": "Critical threshold"}
+    },
+    "data": {
+      "latest_version": {"type": "string", "description": "Latest GitHub release version"},
+      "channel_version": {"type": "string", "description": "Version in update channel"},
+      "published_at": {"type": "string", "description": "Release publish date (RFC3339)"}
     }
   }
 }
@@ -45,7 +58,8 @@ critical_days="${PROBE_CRITICAL_DAYS:-7}"
 output_result() {
     jq --null-input \
         --arg status "$1" \
-        --arg message "$2" \
+        --arg summary "$2" \
+        --arg message "$3" \
         --argjson days_since "$days_since" \
         --argjson warn_days "$warn_days" \
         --argjson critical_days "$critical_days" \
@@ -54,6 +68,7 @@ output_result() {
         --arg published_at "$published_at" \
         '{
             status: $status,
+            summary: $summary,
             message: $message,
             metrics: {
                 days_since_release: $days_since,
@@ -116,11 +131,11 @@ days_since=$(( (now_epoch - published_epoch) / 86400 ))
 
 # Check if latest release is in the update channel
 if [[ "$latest_version" == "$channel_version" ]]; then
-    output_result "ok" "Latest release $latest_version is in update channel"
+    output_result "ok" "$latest_version in channel" "Latest release $latest_version is in update channel"
 elif [[ "$days_since" -gt "$critical_days" ]]; then
-    output_result "critical" "Release $latest_version not in update channel after $days_since days"
+    output_result "critical" "$latest_version missing ($days_since days)" "Release $latest_version not in update channel after $days_since days"
 elif [[ "$days_since" -gt "$warn_days" ]]; then
-    output_result "warning" "Release $latest_version not in update channel after $days_since days"
+    output_result "warning" "$latest_version missing ($days_since days)" "Release $latest_version not in update channel after $days_since days"
 else
-    output_result "ok" "Release $latest_version not yet in update channel ($days_since days old)"
+    output_result "ok" "$latest_version pending ($days_since days)" "Release $latest_version not yet in update channel ($days_since days old)"
 fi

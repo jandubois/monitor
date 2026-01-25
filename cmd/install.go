@@ -150,8 +150,8 @@ func runInstall(cmd *cobra.Command, args []string) error {
 
 	// Check if already installed
 	if _, err := os.Stat(plistPath); err == nil {
-		// Unload existing service first
-		exec.Command("launchctl", "unload", plistPath).Run()
+		// Unload existing service first (ignore error - best effort cleanup)
+		_ = exec.Command("launchctl", "unload", plistPath).Run()
 	}
 
 	// Generate plist
@@ -175,7 +175,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create plist file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	if err := tmpl.Execute(f, data); err != nil {
 		return fmt.Errorf("failed to write plist: %w", err)

@@ -13,10 +13,11 @@ const Name = "debug"
 // GetDescription returns the probe description.
 func GetDescription() probe.Description {
 	return probe.Description{
-		Name:        "debug",
-		Description: "Debug probe for testing failure modes",
-		Version:     "1.0.0",
-		Subcommand:  Name,
+		Name:            "debug",
+		Description:     "Debug probe for testing failure modes",
+		Version:         "1.0.0",
+		Subcommand:      Name,
+		DefaultInterval: "1m",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{},
 			Optional: map[string]probe.ArgumentSpec{
@@ -35,6 +36,11 @@ func GetDescription() probe.Description {
 					Description: "Delay before responding (milliseconds)",
 					Default:     float64(0),
 				},
+			},
+		},
+		Output: probe.OutputSchema{
+			Data: map[string]probe.DataSpec{
+				"mode": {Type: "string", Description: "Active mode"},
 			},
 		},
 	}
@@ -56,6 +62,7 @@ func Run(mode, message string, delayMs int) *probe.Result {
 		}
 		return &probe.Result{
 			Status:  probe.StatusOK,
+			Summary: "mode=ok",
 			Message: msg,
 			Data:    map[string]any{"mode": "ok"},
 		}
@@ -67,6 +74,7 @@ func Run(mode, message string, delayMs int) *probe.Result {
 		}
 		return &probe.Result{
 			Status:  probe.StatusWarning,
+			Summary: "mode=warning",
 			Message: msg,
 			Data:    map[string]any{"mode": "warning"},
 		}
@@ -78,6 +86,7 @@ func Run(mode, message string, delayMs int) *probe.Result {
 		}
 		return &probe.Result{
 			Status:  probe.StatusCritical,
+			Summary: "mode=critical",
 			Message: msg,
 			Data:    map[string]any{"mode": "critical"},
 		}
@@ -92,6 +101,7 @@ func Run(mode, message string, delayMs int) *probe.Result {
 	case "error":
 		return &probe.Result{
 			Status:  probe.StatusUnknown,
+			Summary: "mode=error",
 			Message: "Debug probe simulated error",
 			Data:    map[string]any{"mode": "error"},
 		}
@@ -99,6 +109,7 @@ func Run(mode, message string, delayMs int) *probe.Result {
 	default:
 		return &probe.Result{
 			Status:  probe.StatusUnknown,
+			Summary: "invalid mode",
 			Message: "Invalid mode: " + mode,
 		}
 	}

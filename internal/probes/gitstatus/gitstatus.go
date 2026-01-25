@@ -36,10 +36,11 @@ var aiFilePatterns = []string{
 // GetDescription returns the probe description.
 func GetDescription() probe.Description {
 	return probe.Description{
-		Name:        "git-status",
-		Description: "Check git repositories for uncommitted changes and unpushed commits",
-		Version:     "1.0.0",
-		Subcommand:  Name,
+		Name:            "git-status",
+		Description:     "Check git repositories for uncommitted changes and unpushed commits",
+		Version:         "1.0.0",
+		Subcommand:      Name,
+		DefaultInterval: "15m",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{
 				"path": {
@@ -63,6 +64,17 @@ func GetDescription() probe.Description {
 					Description: "Exclude AI agent files (CLAUDE.md, .claude/, etc.) from uncommitted changes check",
 					Default:     false,
 				},
+			},
+		},
+		Output: probe.OutputSchema{
+			Metrics: map[string]probe.MetricSpec{
+				"repos_checked": {Type: "integer", Unit: "count", Description: "Repositories scanned"},
+				"repos_failed":  {Type: "integer", Unit: "count", Description: "Repositories with issues"},
+				"repos_warned":  {Type: "integer", Unit: "count", Description: "Repositories with warnings"},
+			},
+			Data: map[string]probe.DataSpec{
+				"failures": {Type: "array", Description: "Repositories with critical issues"},
+				"warnings": {Type: "array", Description: "Repositories with warnings"},
 			},
 		},
 	}
@@ -129,13 +141,14 @@ func Run(root string, uncommittedHours, unpushedHours float64, excludeAIFiles bo
 		}
 		return &probe.Result{
 			Status:  probe.StatusCritical,
+			Summary: fmt.Sprintf("%d repositories with issues", len(failures)),
 			Message: sb.String(),
 			Metrics: metrics,
 			Data:    data,
 		}
 	}
 
-	var msg string
+	var summary, msg string
 	if len(warnings) > 0 {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("**%d repositories clean** (%d warnings)\n\n", checkedCount, len(warnings)))
@@ -146,13 +159,16 @@ func Run(root string, uncommittedHours, unpushedHours float64, excludeAIFiles bo
 			}
 			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", relPath, strings.Join(w.Issues, ", ")))
 		}
+		summary = fmt.Sprintf("%d clean, %d warnings", checkedCount, len(warnings))
 		msg = sb.String()
 	} else {
-		msg = fmt.Sprintf("%d repositories clean", checkedCount)
+		summary = fmt.Sprintf("%d repositories clean", checkedCount)
+		msg = summary
 	}
 
 	return &probe.Result{
 		Status:  probe.StatusOK,
+		Summary: summary,
 		Message: msg,
 		Metrics: metrics,
 		Data:    data,
@@ -193,7 +209,7 @@ func findGitRepos(root string) []string {
 	}
 	var repoStack []repoInfo
 
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}

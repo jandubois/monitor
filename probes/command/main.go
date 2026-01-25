@@ -13,10 +13,12 @@ import (
 )
 
 type Description struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Version     string    `json:"version"`
-	Arguments   Arguments `json:"arguments"`
+	Name            string       `json:"name"`
+	Description     string       `json:"description"`
+	Version         string       `json:"version"`
+	Arguments       Arguments    `json:"arguments"`
+	Output          OutputSchema `json:"output,omitempty"`
+	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
 type Arguments struct {
@@ -30,8 +32,25 @@ type ArgSpec struct {
 	Default     any    `json:"default,omitempty"`
 }
 
+type OutputSchema struct {
+	Metrics map[string]MetricSpec `json:"metrics,omitempty"`
+	Data    map[string]DataSpec   `json:"data,omitempty"`
+}
+
+type MetricSpec struct {
+	Type        string `json:"type"`
+	Unit        string `json:"unit,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type DataSpec struct {
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+}
+
 type Result struct {
 	Status  string         `json:"status"`
+	Summary string         `json:"summary,omitempty"`
 	Message string         `json:"message"`
 	Metrics map[string]any `json:"metrics,omitempty"`
 	Data    map[string]any `json:"data,omitempty"`
@@ -61,9 +80,10 @@ func main() {
 
 func printDescription() {
 	desc := Description{
-		Name:        "command",
-		Description: "Run a command and check its exit code",
-		Version:     "1.0.0",
+		Name:            "command",
+		Description:     "Run a command and check its exit code",
+		Version:         "1.0.0",
+		DefaultInterval: "5m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{
 				"command": {
@@ -94,8 +114,19 @@ func printDescription() {
 				},
 			},
 		},
+		Output: OutputSchema{
+			Metrics: map[string]MetricSpec{
+				"exit_code":   {Type: "integer", Description: "Command exit code"},
+				"duration_ms": {Type: "integer", Unit: "milliseconds", Description: "Execution time"},
+			},
+			Data: map[string]DataSpec{
+				"command": {Type: "string", Description: "Executed command"},
+				"stdout":  {Type: "string", Description: "Standard output"},
+				"stderr":  {Type: "string", Description: "Standard error"},
+			},
+		},
 	}
-	json.NewEncoder(os.Stdout).Encode(desc)
+	_ = json.NewEncoder(os.Stdout).Encode(desc)
 }
 
 func runCommand(command, shell, okCodes, warningCodes string, captureOutput bool) {
@@ -131,13 +162,16 @@ func runCommand(command, shell, okCodes, warningCodes string, captureOutput bool
 		status = "warning"
 	}
 
+	summary := fmt.Sprintf("Exit code %d (%dms)", exitCode, duration.Milliseconds())
 	message := fmt.Sprintf("Command exited with code %d", exitCode)
 	if status == "ok" {
+		summary = fmt.Sprintf("OK (%dms)", duration.Milliseconds())
 		message = "Command completed successfully"
 	}
 
 	result := Result{
 		Status:  status,
+		Summary: summary,
 		Message: message,
 		Metrics: map[string]any{
 			"exit_code":   exitCode,
@@ -153,7 +187,7 @@ func runCommand(command, shell, okCodes, warningCodes string, captureOutput bool
 		result.Data["stderr"] = truncate(stderr.String(), 10000)
 	}
 
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }
 
 func parseCodeSet(codes string) map[int]bool {
@@ -182,5 +216,5 @@ func outputError(msg string) {
 		Status:  "unknown",
 		Message: msg,
 	}
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }

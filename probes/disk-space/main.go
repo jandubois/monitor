@@ -9,10 +9,12 @@ import (
 )
 
 type Description struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Version     string    `json:"version"`
-	Arguments   Arguments `json:"arguments"`
+	Name            string       `json:"name"`
+	Description     string       `json:"description"`
+	Version         string       `json:"version"`
+	Arguments       Arguments    `json:"arguments"`
+	Output          OutputSchema `json:"output,omitempty"`
+	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
 type Arguments struct {
@@ -26,8 +28,25 @@ type ArgSpec struct {
 	Default     any    `json:"default,omitempty"`
 }
 
+type OutputSchema struct {
+	Metrics map[string]MetricSpec `json:"metrics,omitempty"`
+	Data    map[string]DataSpec   `json:"data,omitempty"`
+}
+
+type MetricSpec struct {
+	Type        string `json:"type"`
+	Unit        string `json:"unit,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type DataSpec struct {
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+}
+
 type Result struct {
 	Status  string         `json:"status"`
+	Summary string         `json:"summary,omitempty"`
 	Message string         `json:"message"`
 	Metrics map[string]any `json:"metrics,omitempty"`
 	Data    map[string]any `json:"data,omitempty"`
@@ -55,9 +74,10 @@ func main() {
 
 func printDescription() {
 	desc := Description{
-		Name:        "disk-space",
-		Description: "Check available disk space on a path",
-		Version:     "1.0.0",
+		Name:            "disk-space",
+		Description:     "Check available disk space on a path",
+		Version:         "1.0.0",
+		DefaultInterval: "1h",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{
 				"path": {
@@ -78,8 +98,19 @@ func printDescription() {
 				},
 			},
 		},
+		Output: OutputSchema{
+			Metrics: map[string]MetricSpec{
+				"free_bytes":   {Type: "integer", Unit: "bytes", Description: "Available space"},
+				"total_bytes":  {Type: "integer", Unit: "bytes", Description: "Total space"},
+				"free_gb":      {Type: "number", Unit: "gigabytes", Description: "Available space"},
+				"free_percent": {Type: "number", Unit: "percent", Description: "Available percentage"},
+			},
+			Data: map[string]DataSpec{
+				"path": {Type: "string", Description: "Checked path"},
+			},
+		},
 	}
-	json.NewEncoder(os.Stdout).Encode(desc)
+	_ = json.NewEncoder(os.Stdout).Encode(desc)
 }
 
 func checkDiskSpace(path string, minFreeGB, minFreePercent float64) {
@@ -109,16 +140,20 @@ func checkDiskSpace(path string, minFreeGB, minFreePercent float64) {
 		reasons = append(reasons, fmt.Sprintf("%.1f%% free < %.1f%% minimum", freePercent, minFreePercent))
 	}
 
+	summary := fmt.Sprintf("%.1f GB free (%.0f%%)", freeGB, freePercent)
 	message := fmt.Sprintf("%.1f GB free on %s (%.1f%%)", freeGB, path, freePercent)
 	if len(reasons) > 0 {
+		summary = reasons[0]
 		message = reasons[0]
 		if len(reasons) > 1 {
+			summary += "; " + reasons[1]
 			message += "; " + reasons[1]
 		}
 	}
 
 	result := Result{
 		Status:  status,
+		Summary: summary,
 		Message: message,
 		Metrics: map[string]any{
 			"free_bytes":   freeBytes,
@@ -131,7 +166,7 @@ func checkDiskSpace(path string, minFreeGB, minFreePercent float64) {
 		},
 	}
 
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }
 
 func outputError(msg string) {
@@ -139,5 +174,5 @@ func outputError(msg string) {
 		Status:  "unknown",
 		Message: msg,
 	}
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }

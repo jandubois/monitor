@@ -15,10 +15,11 @@ const Name = "disk-space"
 // GetDescription returns the probe description.
 func GetDescription() probe.Description {
 	return probe.Description{
-		Name:        "disk-space",
-		Description: "Check available disk space on a path",
-		Version:     "1.0.0",
-		Subcommand:  Name,
+		Name:            "disk-space",
+		Description:     "Check available disk space on a path",
+		Version:         "1.0.0",
+		Subcommand:      Name,
+		DefaultInterval: "1h",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{
 				"path": {
@@ -37,6 +38,17 @@ func GetDescription() probe.Description {
 					Description: "Minimum free percentage (0-100)",
 					Default:     float64(0),
 				},
+			},
+		},
+		Output: probe.OutputSchema{
+			Metrics: map[string]probe.MetricSpec{
+				"free_bytes":   {Type: "integer", Unit: "bytes", Description: "Available space"},
+				"total_bytes":  {Type: "integer", Unit: "bytes", Description: "Total space"},
+				"free_gb":      {Type: "number", Unit: "gigabytes", Description: "Available space"},
+				"free_percent": {Type: "number", Unit: "percent", Description: "Available percentage"},
+			},
+			Data: map[string]probe.DataSpec{
+				"path": {Type: "string", Description: "Checked path"},
 			},
 		},
 	}
@@ -77,16 +89,20 @@ func Run(path string, minFreeGB, minFreePercent float64) *probe.Result {
 		reasons = append(reasons, fmt.Sprintf("%.1f%% free < %.1f%% minimum", freePercent, minFreePercent))
 	}
 
+	summary := fmt.Sprintf("%s free (%.0f%%)", units.HumanSize(float64(freeBytes)), freePercent)
 	message := fmt.Sprintf("%s free on %s (%.1f%%)", units.HumanSize(float64(freeBytes)), path, freePercent)
 	if len(reasons) > 0 {
+		summary = reasons[0]
 		message = reasons[0]
 		if len(reasons) > 1 {
+			summary += "; " + reasons[1]
 			message += "; " + reasons[1]
 		}
 	}
 
 	return &probe.Result{
 		Status:  status,
+		Summary: summary,
 		Message: message,
 		Metrics: map[string]any{
 			"free_bytes":   freeBytes,

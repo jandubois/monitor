@@ -8,10 +8,12 @@ import (
 )
 
 type Description struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Version     string    `json:"version"`
-	Arguments   Arguments `json:"arguments"`
+	Name            string       `json:"name"`
+	Description     string       `json:"description"`
+	Version         string       `json:"version"`
+	Arguments       Arguments    `json:"arguments"`
+	Output          OutputSchema `json:"output,omitempty"`
+	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
 type Arguments struct {
@@ -26,8 +28,25 @@ type ArgSpec struct {
 	Enum        []string `json:"enum,omitempty"`
 }
 
+type OutputSchema struct {
+	Metrics map[string]MetricSpec `json:"metrics,omitempty"`
+	Data    map[string]DataSpec   `json:"data,omitempty"`
+}
+
+type MetricSpec struct {
+	Type        string `json:"type"`
+	Unit        string `json:"unit,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type DataSpec struct {
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+}
+
 type Result struct {
 	Status  string         `json:"status"`
+	Summary string         `json:"summary,omitempty"`
 	Message string         `json:"message"`
 	Metrics map[string]any `json:"metrics,omitempty"`
 	Data    map[string]any `json:"data,omitempty"`
@@ -56,21 +75,21 @@ func main() {
 		if msg == "" {
 			msg = "Debug probe completed successfully"
 		}
-		output("ok", msg)
+		output("ok", "mode=ok", msg)
 
 	case "warning":
 		msg := *message
 		if msg == "" {
 			msg = "Debug probe simulated warning"
 		}
-		output("warning", msg)
+		output("warning", "mode=warning", msg)
 
 	case "critical":
 		msg := *message
 		if msg == "" {
 			msg = "Debug probe simulated critical failure"
 		}
-		output("critical", msg)
+		output("critical", "mode=critical", msg)
 
 	case "timeout":
 		// Sleep forever - watcher will kill us
@@ -84,15 +103,16 @@ func main() {
 		os.Exit(1)
 
 	default:
-		output("unknown", "Invalid mode: "+*mode)
+		output("unknown", "invalid mode", "Invalid mode: "+*mode)
 	}
 }
 
 func printDescription() {
 	desc := Description{
-		Name:        "debug",
-		Description: "Debug probe for testing failure modes",
-		Version:     "1.0.0",
+		Name:            "debug",
+		Description:     "Debug probe for testing failure modes",
+		Version:         "1.0.0",
+		DefaultInterval: "1m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{},
 			Optional: map[string]ArgSpec{
@@ -113,17 +133,23 @@ func printDescription() {
 				},
 			},
 		},
+		Output: OutputSchema{
+			Data: map[string]DataSpec{
+				"mode": {Type: "string", Description: "Active mode"},
+			},
+		},
 	}
-	json.NewEncoder(os.Stdout).Encode(desc)
+	_ = json.NewEncoder(os.Stdout).Encode(desc)
 }
 
-func output(status, message string) {
+func output(status, summary, message string) {
 	result := Result{
 		Status:  status,
+		Summary: summary,
 		Message: message,
 		Data: map[string]any{
 			"mode": status,
 		},
 	}
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }

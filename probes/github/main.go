@@ -11,10 +11,12 @@ import (
 )
 
 type Description struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Version     string    `json:"version"`
-	Arguments   Arguments `json:"arguments"`
+	Name            string       `json:"name"`
+	Description     string       `json:"description"`
+	Version         string       `json:"version"`
+	Arguments       Arguments    `json:"arguments"`
+	Output          OutputSchema `json:"output,omitempty"`
+	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
 type Arguments struct {
@@ -29,8 +31,25 @@ type ArgSpec struct {
 	Enum        []string `json:"enum,omitempty"`
 }
 
+type OutputSchema struct {
+	Metrics map[string]MetricSpec `json:"metrics,omitempty"`
+	Data    map[string]DataSpec   `json:"data,omitempty"`
+}
+
+type MetricSpec struct {
+	Type        string `json:"type"`
+	Unit        string `json:"unit,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type DataSpec struct {
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+}
+
 type Result struct {
 	Status  string         `json:"status"`
+	Summary string         `json:"summary,omitempty"`
 	Message string         `json:"message"`
 	Metrics map[string]any `json:"metrics,omitempty"`
 	Data    map[string]any `json:"data,omitempty"`
@@ -140,25 +159,28 @@ func main() {
 
 	// Build Markdown message
 	message := formatCommitMessage(*repo, commit, commitURL)
+	summary := fmt.Sprintf("%s: %s", commit.SHA[:7], commitTitle)
 
 	if len(failures) > 0 {
 		result := Result{
 			Status:  "critical",
+			Summary: failures[0],
 			Message: fmt.Sprintf("**Commit check failed:** %s\n\n%s", failures[0], message),
 			Metrics: metrics,
 			Data:    data,
 		}
-		json.NewEncoder(os.Stdout).Encode(result)
+		_ = json.NewEncoder(os.Stdout).Encode(result)
 		return
 	}
 
 	result := Result{
 		Status:  "ok",
+		Summary: summary,
 		Message: message,
 		Metrics: metrics,
 		Data:    data,
 	}
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }
 
 func getLastCommit(repo, branch, token string) (*Commit, error) {
@@ -216,9 +238,10 @@ func githubRequest(url, token string) (*http.Response, error) {
 
 func printDescription() {
 	desc := Description{
-		Name:        "github",
-		Description: "Check GitHub repository commit activity",
-		Version:     "1.0.0",
+		Name:            "github",
+		Description:     "Check GitHub repository commit activity",
+		Version:         "1.0.0",
+		DefaultInterval: "1h",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{
 				"repo": {
@@ -249,8 +272,24 @@ func printDescription() {
 				},
 			},
 		},
+		Output: OutputSchema{
+			Metrics: map[string]MetricSpec{
+				"age_hours":     {Type: "number", Unit: "hours", Description: "Commit age"},
+				"files_changed": {Type: "integer", Unit: "count", Description: "Files changed"},
+				"additions":     {Type: "integer", Unit: "count", Description: "Lines added"},
+				"deletions":     {Type: "integer", Unit: "count", Description: "Lines deleted"},
+			},
+			Data: map[string]DataSpec{
+				"sha":         {Type: "string", Description: "Short commit SHA"},
+				"full_sha":    {Type: "string", Description: "Full commit SHA"},
+				"title":       {Type: "string", Description: "Commit title"},
+				"body":        {Type: "string", Description: "Commit body"},
+				"url":         {Type: "string", Description: "Commit URL"},
+				"author_date": {Type: "string", Description: "Author date (RFC3339)"},
+			},
+		},
 	}
-	json.NewEncoder(os.Stdout).Encode(desc)
+	_ = json.NewEncoder(os.Stdout).Encode(desc)
 }
 
 func parseCommitMessage(msg string) (title, body string) {
@@ -288,5 +327,5 @@ func output(status, message string) {
 		Status:  status,
 		Message: message,
 	}
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }

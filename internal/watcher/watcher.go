@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/jandubois/monitor/internal/config"
@@ -21,9 +20,6 @@ type Watcher struct {
 
 	scheduler *Scheduler
 	executor  *Executor
-
-	mu       sync.Mutex
-	shutdown bool
 }
 
 // New creates a new Watcher instance.
@@ -145,7 +141,7 @@ func (w *Watcher) createAPIServer() *http.Server {
 	// Health endpoint is public
 	mux.HandleFunc("GET /health", func(rw http.ResponseWriter, r *http.Request) {
 		rw.WriteHeader(http.StatusOK)
-		rw.Write([]byte(`{"status":"ok"}`))
+		_, _ = rw.Write([]byte(`{"status":"ok"}`))
 	})
 
 	// Protected endpoints require authentication
@@ -155,7 +151,7 @@ func (w *Watcher) createAPIServer() *http.Server {
 			return
 		}
 		rw.WriteHeader(http.StatusOK)
-		rw.Write([]byte(`{"status":"reloaded"}`))
+		_, _ = rw.Write([]byte(`{"status":"reloaded"}`))
 	}))
 
 	mux.HandleFunc("POST /trigger/{id}", w.requireAuth(func(rw http.ResponseWriter, r *http.Request) {
@@ -165,7 +161,7 @@ func (w *Watcher) createAPIServer() *http.Server {
 			return
 		}
 		rw.WriteHeader(http.StatusOK)
-		rw.Write([]byte(`{"status":"triggered"}`))
+		_, _ = rw.Write([]byte(`{"status":"triggered"}`))
 	}))
 
 	mux.HandleFunc("POST /discover", w.requireAuth(func(rw http.ResponseWriter, r *http.Request) {
@@ -187,7 +183,7 @@ func (w *Watcher) createAPIServer() *http.Server {
 		}
 
 		rw.WriteHeader(http.StatusOK)
-		fmt.Fprintf(rw, `{"status":"discovered","count":%d}`, len(probeTypes))
+		_, _ = fmt.Fprintf(rw, `{"status":"discovered","count":%d}`, len(probeTypes))
 	}))
 
 	return &http.Server{

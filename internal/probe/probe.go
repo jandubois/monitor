@@ -13,6 +13,7 @@ const (
 // Result is the standard output format for probes.
 type Result struct {
 	Status  Status         `json:"status"`
+	Summary string         `json:"summary,omitempty"` // One-line for collapsed view; falls back to first line of Message
 	Message string         `json:"message"`
 	Metrics map[string]any `json:"metrics,omitempty"`
 	Data    map[string]any `json:"data,omitempty"`
@@ -21,11 +22,13 @@ type Result struct {
 
 // Description is the self-description format for probes.
 type Description struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Version     string    `json:"version"`
-	Arguments   Arguments `json:"arguments"`
-	Subcommand  string    `json:"subcommand,omitempty"` // If set, execute as: binary <subcommand> --args
+	Name            string       `json:"name"`
+	Description     string       `json:"description"`
+	Version         string       `json:"version"`
+	Arguments       Arguments    `json:"arguments"`
+	Output          OutputSchema `json:"output,omitempty"`           // Documents expected metrics/data fields
+	DefaultInterval string       `json:"default_interval,omitempty"` // Suggested run frequency (e.g., "1h", "5m")
+	Subcommand      string       `json:"subcommand,omitempty"`       // If set, execute as: binary <subcommand> --args
 }
 
 // Arguments describes required and optional probe arguments.
@@ -40,4 +43,23 @@ type ArgumentSpec struct {
 	Description string   `json:"description"`
 	Default     any      `json:"default,omitempty"`
 	Enum        []string `json:"enum,omitempty"`
+}
+
+// OutputSchema documents the expected probe output fields.
+type OutputSchema struct {
+	Metrics map[string]MetricSpec `json:"metrics,omitempty"`
+	Data    map[string]DataSpec   `json:"data,omitempty"`
+}
+
+// MetricSpec describes a metric field in probe output.
+type MetricSpec struct {
+	Type        string `json:"type"`                  // "number" or "integer"
+	Unit        string `json:"unit,omitempty"`        // "bytes", "percent", "hours", etc.
+	Description string `json:"description,omitempty"` // Human-readable label
+}
+
+// DataSpec describes a data field in probe output.
+type DataSpec struct {
+	Type        string `json:"type"`                  // "string", "number", "boolean", "array", "object"
+	Description string `json:"description,omitempty"` // Human-readable label
 }

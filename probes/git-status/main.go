@@ -12,10 +12,12 @@ import (
 )
 
 type Description struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Version     string    `json:"version"`
-	Arguments   Arguments `json:"arguments"`
+	Name            string       `json:"name"`
+	Description     string       `json:"description"`
+	Version         string       `json:"version"`
+	Arguments       Arguments    `json:"arguments"`
+	Output          OutputSchema `json:"output,omitempty"`
+	DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
 type Arguments struct {
@@ -29,8 +31,25 @@ type ArgSpec struct {
 	Default     any    `json:"default,omitempty"`
 }
 
+type OutputSchema struct {
+	Metrics map[string]MetricSpec `json:"metrics,omitempty"`
+	Data    map[string]DataSpec   `json:"data,omitempty"`
+}
+
+type MetricSpec struct {
+	Type        string `json:"type"`
+	Unit        string `json:"unit,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
+type DataSpec struct {
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+}
+
 type Result struct {
 	Status  string         `json:"status"`
+	Summary string         `json:"summary,omitempty"`
 	Message string         `json:"message"`
 	Metrics map[string]any `json:"metrics,omitempty"`
 	Data    map[string]any `json:"data,omitempty"`
@@ -76,9 +95,10 @@ func main() {
 
 func printDescription() {
 	desc := Description{
-		Name:        "git-status",
-		Description: "Check git repositories for uncommitted changes and unpushed commits",
-		Version:     "1.0.0",
+		Name:            "git-status",
+		Description:     "Check git repositories for uncommitted changes and unpushed commits",
+		Version:         "1.0.0",
+		DefaultInterval: "15m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{
 				"path": {
@@ -104,8 +124,19 @@ func printDescription() {
 				},
 			},
 		},
+		Output: OutputSchema{
+			Metrics: map[string]MetricSpec{
+				"repos_checked": {Type: "integer", Unit: "count", Description: "Repositories scanned"},
+				"repos_failed":  {Type: "integer", Unit: "count", Description: "Repositories with issues"},
+				"repos_warned":  {Type: "integer", Unit: "count", Description: "Repositories with warnings"},
+			},
+			Data: map[string]DataSpec{
+				"failures": {Type: "array", Description: "Repositories with critical issues"},
+				"warnings": {Type: "array", Description: "Repositories with warnings"},
+			},
+		},
 	}
-	json.NewEncoder(os.Stdout).Encode(desc)
+	_ = json.NewEncoder(os.Stdout).Encode(desc)
 }
 
 func formatDuration(hours float64) string {
@@ -184,15 +215,16 @@ func checkGitRepos(root string, uncommittedHours, unpushedHours float64, exclude
 		}
 		result := Result{
 			Status:  "critical",
+			Summary: fmt.Sprintf("%d repositories with issues", len(failures)),
 			Message: sb.String(),
 			Metrics: metrics,
 			Data:    data,
 		}
-		json.NewEncoder(os.Stdout).Encode(result)
+		_ = json.NewEncoder(os.Stdout).Encode(result)
 		return
 	}
 
-	var msg string
+	var summary, msg string
 	if len(warnings) > 0 {
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("**%d repositories clean** (%d warnings)\n\n", checkedCount, len(warnings)))
@@ -203,23 +235,26 @@ func checkGitRepos(root string, uncommittedHours, unpushedHours float64, exclude
 			}
 			sb.WriteString(fmt.Sprintf("- **%s**: %s\n", relPath, strings.Join(w.Issues, ", ")))
 		}
+		summary = fmt.Sprintf("%d clean, %d warnings", checkedCount, len(warnings))
 		msg = sb.String()
 	} else {
-		msg = fmt.Sprintf("%d repositories clean", checkedCount)
+		summary = fmt.Sprintf("%d repositories clean", checkedCount)
+		msg = summary
 	}
 
 	result := Result{
 		Status:  "ok",
+		Summary: summary,
 		Message: msg,
 		Metrics: metrics,
 		Data:    data,
 	}
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }
 
 func findGitRepos(root string) []string {
 	var repos []string
-	filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -401,5 +436,5 @@ func output(status, message string) {
 		Status:  status,
 		Message: message,
 	}
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }

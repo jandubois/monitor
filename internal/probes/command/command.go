@@ -18,10 +18,11 @@ const Name = "command"
 // GetDescription returns the probe description.
 func GetDescription() probe.Description {
 	return probe.Description{
-		Name:        "command",
-		Description: "Run a command and check its exit code",
-		Version:     "1.0.0",
-		Subcommand:  Name,
+		Name:            "command",
+		Description:     "Run a command and check its exit code",
+		Version:         "1.0.0",
+		Subcommand:      Name,
+		DefaultInterval: "5m",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{
 				"command": {
@@ -50,6 +51,17 @@ func GetDescription() probe.Description {
 					Description: "Include command output in result data",
 					Default:     true,
 				},
+			},
+		},
+		Output: probe.OutputSchema{
+			Metrics: map[string]probe.MetricSpec{
+				"exit_code":   {Type: "integer", Description: "Command exit code"},
+				"duration_ms": {Type: "integer", Unit: "milliseconds", Description: "Execution time"},
+			},
+			Data: map[string]probe.DataSpec{
+				"command": {Type: "string", Description: "Executed command"},
+				"stdout":  {Type: "string", Description: "Standard output"},
+				"stderr":  {Type: "string", Description: "Standard error"},
 			},
 		},
 	}
@@ -98,13 +110,16 @@ func Run(command, shell, okCodes, warningCodes string, captureOutput bool) *prob
 		status = probe.StatusWarning
 	}
 
+	summary := fmt.Sprintf("Exit code %d (%dms)", exitCode, duration.Milliseconds())
 	message := fmt.Sprintf("Command exited with code %d", exitCode)
 	if status == probe.StatusOK {
+		summary = fmt.Sprintf("OK (%dms)", duration.Milliseconds())
 		message = "Command completed successfully"
 	}
 
 	result := &probe.Result{
 		Status:  status,
+		Summary: summary,
 		Message: message,
 		Metrics: map[string]any{
 			"exit_code":   exitCode,

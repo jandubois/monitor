@@ -34,7 +34,7 @@ func (d *Dispatcher) LoadChannels(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	d.mu.Lock()
 	defer d.mu.Unlock()

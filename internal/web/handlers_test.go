@@ -46,19 +46,19 @@ func testServer(t *testing.T) (*Server, func()) {
 
 	server, err := NewServer(database, cfg)
 	if err != nil {
-		database.Close()
+		_ = database.Close()
 		t.Fatalf("failed to create server: %v", err)
 	}
 
 	cleanup := func() {
 		// Clean up test data
-		database.DB().ExecContext(ctx, "DELETE FROM probe_results")
-		database.DB().ExecContext(ctx, "DELETE FROM probe_configs")
-		database.DB().ExecContext(ctx, "DELETE FROM watcher_probe_types")
-		database.DB().ExecContext(ctx, "DELETE FROM probe_types")
-		database.DB().ExecContext(ctx, "DELETE FROM watchers")
-		database.DB().ExecContext(ctx, "DELETE FROM notification_channels")
-		database.Close()
+		_, _ = database.DB().ExecContext(ctx, "DELETE FROM probe_results")
+		_, _ = database.DB().ExecContext(ctx, "DELETE FROM probe_configs")
+		_, _ = database.DB().ExecContext(ctx, "DELETE FROM watcher_probe_types")
+		_, _ = database.DB().ExecContext(ctx, "DELETE FROM probe_types")
+		_, _ = database.DB().ExecContext(ctx, "DELETE FROM watchers")
+		_, _ = database.DB().ExecContext(ctx, "DELETE FROM notification_channels")
+		_ = database.Close()
 	}
 
 	return server, cleanup
@@ -202,7 +202,7 @@ func TestRequireAuth(t *testing.T) {
 
 	handler := s.requireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		_, _ = w.Write([]byte("success"))
 	}))
 
 	tests := []struct {
@@ -281,7 +281,7 @@ func TestRequireWatcherAuth(t *testing.T) {
 			t.Error("expected watcher name in context")
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success: " + watcherName + " " + strconv.Itoa(watcherID)))
+		_, _ = w.Write([]byte("success: " + watcherName + " " + strconv.Itoa(watcherID)))
 	}))
 
 	tests := []struct {

@@ -2,9 +2,17 @@
 
 This guide describes the available probes and their configuration options.
 
+Each probe provides:
+- **Parameters** — Arguments to configure the check
+- **Metrics** — Numeric values for graphing and alerting
+- **Output schema** — Field descriptions for UI display (via `--describe`)
+- **Default interval** — Suggested run frequency
+
 ## disk-space
 
 Check available disk space on a filesystem path.
+
+**Default interval:** 1h
 
 **Use cases:**
 - Monitor server disk usage
@@ -33,13 +41,18 @@ The probe returns `critical` if either threshold is breached.
 
 ### Metrics
 
-- `free_bytes` — Available space in bytes
-- `total_bytes` — Total filesystem size
-- `free_percent` — Available space as percentage
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `free_bytes` | bytes | Available space |
+| `total_bytes` | bytes | Total filesystem size |
+| `free_gb` | gigabytes | Available space |
+| `free_percent` | percent | Available percentage |
 
 ---
 
 ## command
+
+**Default interval:** 5m
 
 Run a shell command and check its exit code.
 
@@ -73,12 +86,16 @@ Exit codes not in `ok_codes` or `warning_codes` produce `critical` status.
 
 ### Metrics
 
-- `exit_code` — Command's exit code
-- `duration_ms` — Execution time in milliseconds
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `exit_code` | — | Command's exit code |
+| `duration_ms` | milliseconds | Execution time |
 
 ---
 
 ## git-status
+
+**Default interval:** 15m
 
 Scan a directory for Git repositories with uncommitted changes or unpushed commits.
 
@@ -111,13 +128,17 @@ The probe returns `critical` if any repository exceeds these thresholds.
 
 ### Metrics
 
-- `repos_scanned` — Number of repositories found
-- `repos_dirty` — Repositories with uncommitted changes
-- `repos_unpushed` — Repositories with unpushed commits
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `repos_checked` | count | Repositories scanned |
+| `repos_failed` | count | Repositories with issues |
+| `repos_warned` | count | Repositories with warnings |
 
 ---
 
 ## github
+
+**Default interval:** 1h
 
 Check GitHub repository activity (commits, file changes).
 
@@ -150,14 +171,18 @@ Requires a GitHub token via `GH_TOKEN` or `GITHUB_TOKEN` environment variable.
 
 ### Metrics
 
-- `commit_age_hours` — Hours since the latest commit
-- `files_changed` — Files changed in the latest commit
-- `additions` — Lines added in the latest commit
-- `deletions` — Lines deleted in the latest commit
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `age_hours` | hours | Commit age |
+| `files_changed` | count | Files changed |
+| `additions` | count | Lines added |
+| `deletions` | count | Lines deleted |
 
 ---
 
 ## rd-releases
+
+**Default interval:** 6h
 
 Check if the latest Rancher Desktop release appears in the update channel.
 
@@ -185,19 +210,17 @@ The probe compares the latest GitHub release against the Rancher Desktop update 
 
 ### Metrics
 
-- `days_since_release` — Days since the release was published
-- `warn_days` — Configured warning threshold
-- `critical_days` — Configured critical threshold
-
-### Data
-
-- `latest_version` — Latest GitHub release version
-- `channel_version` — Version in the update channel
-- `published_at` — Release publication timestamp
+| Metric | Unit | Description |
+|--------|------|-------------|
+| `days_since_release` | count | Days since release |
+| `warn_days` | count | Warning threshold |
+| `critical_days` | count | Critical threshold |
 
 ---
 
 ## debug
+
+**Default interval:** 1m
 
 Test probe for debugging and development. Simulates various failure modes.
 

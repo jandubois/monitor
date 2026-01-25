@@ -13,7 +13,7 @@ import (
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +27,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var watchers []map[string]any
 	allHealthy := true
@@ -57,14 +57,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Get recent failure count
 	var recentFailures int
-	s.db.DB().QueryRowContext(ctx, `
+	_ = s.db.DB().QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM probe_results
 		WHERE status IN ('critical', 'unknown')
 		AND executed_at > datetime('now', '-1 hour')
 	`).Scan(&recentFailures)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"server_name":     s.config.Name,
 		"watchers":        watchers,
 		"all_healthy":     allHealthy,
@@ -108,7 +108,7 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var probeTypes []map[string]any
 	for rows.Next() {
@@ -155,7 +155,7 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(probeTypes)
+	_ = json.NewEncoder(w).Encode(probeTypes)
 }
 
 func (s *Server) handleDiscoverProbeTypes(w http.ResponseWriter, r *http.Request) {
@@ -165,10 +165,10 @@ func (s *Server) handleDiscoverProbeTypes(w http.ResponseWriter, r *http.Request
 	ctx := r.Context()
 
 	var count int
-	s.db.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM probe_types`).Scan(&count)
+	_ = s.db.DB().QueryRowContext(ctx, `SELECT COUNT(*) FROM probe_types`).Scan(&count)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"message":     "probe types are discovered by watchers on startup",
 		"probe_types": count,
 	})
@@ -188,7 +188,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var watchers []map[string]any
 	for rows.Next() {
@@ -230,7 +230,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(watchers)
+	_ = json.NewEncoder(w).Encode(watchers)
 }
 
 func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
@@ -264,7 +264,7 @@ func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer ptRows.Close()
+	defer func() { _ = ptRows.Close() }()
 
 	var probeTypes []map[string]any
 	for ptRows.Next() {
@@ -307,7 +307,7 @@ func (s *Server) handleGetWatcher(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(watcher)
+	_ = json.NewEncoder(w).Encode(watcher)
 }
 
 func (s *Server) handleDeleteWatcher(w http.ResponseWriter, r *http.Request) {
@@ -373,7 +373,7 @@ func (s *Server) handleSetWatcherPaused(w http.ResponseWriter, r *http.Request) 
 		slog.Info("watcher approved and unpaused", "id", id)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"paused": req.Paused})
+	_ = json.NewEncoder(w).Encode(map[string]bool{"paused": req.Paused})
 }
 
 func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) {
@@ -422,7 +422,7 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var configs []map[string]any
 	for rows.Next() {
@@ -494,7 +494,7 @@ func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(configs)
+	_ = json.NewEncoder(w).Encode(configs)
 }
 
 func (s *Server) handleCreateProbeConfig(w http.ResponseWriter, r *http.Request) {
@@ -543,7 +543,7 @@ func (s *Server) handleCreateProbeConfig(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{"id": id})
+	_ = json.NewEncoder(w).Encode(map[string]any{"id": id})
 }
 
 func (s *Server) handleGetProbeConfig(w http.ResponseWriter, r *http.Request) {
@@ -612,7 +612,7 @@ func (s *Server) handleGetProbeConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(config)
+	_ = json.NewEncoder(w).Encode(config)
 }
 
 func (s *Server) handleUpdateProbeConfig(w http.ResponseWriter, r *http.Request) {
@@ -702,10 +702,10 @@ func (s *Server) handleRunProbeConfig(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			slog.Warn("failed to trigger watcher directly, falling back to poll", "error", err)
 		} else {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				w.Header().Set("Content-Type", "application/json")
-				json.NewEncoder(w).Encode(map[string]string{"status": "triggered"})
+				_ = json.NewEncoder(w).Encode(map[string]string{"status": "triggered"})
 				return
 			}
 			slog.Warn("watcher trigger returned non-OK status", "status", resp.StatusCode)
@@ -722,7 +722,7 @@ func (s *Server) handleRunProbeConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "scheduled"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "scheduled"})
 }
 
 func (s *Server) handleSetProbeEnabled(w http.ResponseWriter, r *http.Request) {
@@ -755,7 +755,7 @@ func (s *Server) handleSetProbeEnabled(w http.ResponseWriter, r *http.Request) {
 	if req.Enabled {
 		// Get watcher callback URL
 		var callbackURL *string
-		s.db.DB().QueryRowContext(ctx, `
+		_ = s.db.DB().QueryRowContext(ctx, `
 			SELECT w.callback_url
 			FROM probe_configs pc
 			JOIN watchers w ON w.id = pc.watcher_id
@@ -767,16 +767,16 @@ func (s *Server) handleSetProbeEnabled(w http.ResponseWriter, r *http.Request) {
 			triggerReq, _ := http.NewRequestWithContext(ctx, "POST", triggerURL, nil)
 			triggerReq.Header.Set("Authorization", "Bearer "+s.config.AuthToken)
 			if resp, err := http.DefaultClient.Do(triggerReq); err == nil {
-				resp.Body.Close()
+				_ = resp.Body.Close()
 			}
 		} else {
 			// Fall back to poll-based trigger
-			s.db.DB().ExecContext(ctx, `UPDATE probe_configs SET next_run_at = datetime('now') WHERE id = ?`, id)
+			_, _ = s.db.DB().ExecContext(ctx, `UPDATE probe_configs SET next_run_at = datetime('now') WHERE id = ?`, id)
 		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"enabled": req.Enabled})
+	_ = json.NewEncoder(w).Encode(map[string]bool{"enabled": req.Enabled})
 }
 
 func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
@@ -831,7 +831,7 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []map[string]any
 	for rows.Next() {
@@ -875,7 +875,7 @@ func (s *Server) handleQueryResults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	_ = json.NewEncoder(w).Encode(results)
 }
 
 func (s *Server) handleGetResults(w http.ResponseWriter, r *http.Request) {
@@ -894,7 +894,7 @@ func (s *Server) handleGetResults(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []map[string]any
 	for rows.Next() {
@@ -937,20 +937,20 @@ func (s *Server) handleGetResults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(results)
+	_ = json.NewEncoder(w).Encode(results)
 }
 
 func (s *Server) handleResultStats(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var totalConfigs, enabledConfigs int
-	s.db.DB().QueryRowContext(ctx, `
+	_ = s.db.DB().QueryRowContext(ctx, `
 		SELECT COUNT(*), SUM(CASE WHEN enabled = 1 THEN 1 ELSE 0 END) FROM probe_configs
 	`).Scan(&totalConfigs, &enabledConfigs)
 
 	// Use a subquery to get the latest status for each probe config, then count
 	var okCount, warningCount, criticalCount, unknownCount int
-	s.db.DB().QueryRowContext(ctx, `
+	_ = s.db.DB().QueryRowContext(ctx, `
 		SELECT
 			SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END),
 			SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END),
@@ -964,7 +964,7 @@ func (s *Server) handleResultStats(w http.ResponseWriter, r *http.Request) {
 	`).Scan(&okCount, &warningCount, &criticalCount, &unknownCount)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"total_configs":   totalConfigs,
 		"enabled_configs": enabledConfigs,
 		"status_counts": map[string]int{
@@ -986,7 +986,7 @@ func (s *Server) handleListNotificationChannels(w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var channels []map[string]any
 	for rows.Next() {
@@ -1010,7 +1010,7 @@ func (s *Server) handleListNotificationChannels(w http.ResponseWriter, r *http.R
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(channels)
+	_ = json.NewEncoder(w).Encode(channels)
 }
 
 func (s *Server) handleCreateNotificationChannel(w http.ResponseWriter, r *http.Request) {
@@ -1047,7 +1047,7 @@ func (s *Server) handleCreateNotificationChannel(w http.ResponseWriter, r *http.
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{"id": id})
+	_ = json.NewEncoder(w).Encode(map[string]any{"id": id})
 }
 
 func (s *Server) handleUpdateNotificationChannel(w http.ResponseWriter, r *http.Request) {

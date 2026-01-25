@@ -21,6 +21,7 @@ When invoked with `--describe`, a probe outputs its metadata as JSON:
   "name": "my-probe",
   "description": "Check something important",
   "version": "1.0.0",
+  "default_interval": "5m",
   "arguments": {
     "required": {
       "target": {
@@ -35,6 +36,14 @@ When invoked with `--describe`, a probe outputs its metadata as JSON:
         "default": 30
       }
     }
+  },
+  "output": {
+    "metrics": {
+      "response_time_ms": {"type": "integer", "unit": "milliseconds", "description": "Response time"}
+    },
+    "data": {
+      "target": {"type": "string", "description": "Checked target"}
+    }
   }
 }
 ```
@@ -47,6 +56,8 @@ When invoked with `--describe`, a probe outputs its metadata as JSON:
 | `description` | Yes | Human-readable summary |
 | `version` | Yes | Semantic version (e.g., "1.0.0") |
 | `arguments` | Yes | Object with `required` and/or `optional` maps |
+| `output` | No | Schema documenting expected metrics and data fields |
+| `default_interval` | No | Suggested run frequency (e.g., "1h", "5m", "1d") |
 | `subcommand` | No | If set, executor runs: `binary <subcommand> --args` |
 
 #### Argument Specification
@@ -59,6 +70,50 @@ Each argument has:
 | `description` | Yes | Human-readable explanation |
 | `default` | No | Default value (omit for required arguments) |
 | `enum` | No | Array of allowed values |
+
+#### Output Schema
+
+Document expected output fields so the frontend can display labels, units, and tooltips:
+
+```json
+{
+  "output": {
+    "metrics": {
+      "free_bytes": {
+        "type": "integer",
+        "unit": "bytes",
+        "description": "Available space"
+      },
+      "free_percent": {
+        "type": "number",
+        "unit": "percent",
+        "description": "Available percentage"
+      }
+    },
+    "data": {
+      "path": {
+        "type": "string",
+        "description": "Checked path"
+      }
+    }
+  }
+}
+```
+
+**Metric fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `type` | Yes | `"number"` or `"integer"` |
+| `unit` | No | Unit for formatting: `bytes`, `percent`, `hours`, `milliseconds`, `count` |
+| `description` | No | Human-readable label |
+
+**Data fields:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `type` | Yes | `"string"`, `"number"`, `"boolean"`, `"array"`, or `"object"` |
+| `description` | No | Human-readable label |
 
 ### Execution
 
@@ -84,14 +139,14 @@ Probes output JSON to stdout:
 ```json
 {
   "status": "ok",
-  "message": "All systems operational",
+  "summary": "202.6 GB free (89%)",
+  "message": "202.6 GB free on / (89.4%)",
   "metrics": {
-    "response_time_ms": 42,
-    "items_checked": 100
+    "free_bytes": 217538662400,
+    "free_percent": 89.4
   },
   "data": {
-    "version": "1.2.3",
-    "last_updated": "2024-01-15T10:30:00Z"
+    "path": "/"
   }
 }
 ```
@@ -101,7 +156,8 @@ Probes output JSON to stdout:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `status` | Yes | One of: `ok`, `warning`, `critical`, `unknown` |
-| `message` | Yes | Human-readable status summary |
+| `summary` | No | One-line text for collapsed view; defaults to first line of `message` |
+| `message` | Yes | Full status text for expanded view |
 | `metrics` | No | Numeric values for graphing/alerting |
 | `data` | No | Additional context (strings, objects, etc.) |
 | `next_run` | No | ISO 8601 timestamp to override next scheduled run |
@@ -142,10 +198,12 @@ import (
 )
 
 type Description struct {
-    Name        string    `json:"name"`
-    Description string    `json:"description"`
-    Version     string    `json:"version"`
-    Arguments   Arguments `json:"arguments"`
+    Name            string       `json:"name"`
+    Description     string       `json:"description"`
+    Version         string       `json:"version"`
+    Arguments       Arguments    `json:"arguments"`
+    Output          OutputSchema `json:"output,omitempty"`
+    DefaultInterval string       `json:"default_interval,omitempty"`
 }
 
 type Arguments struct {
@@ -159,8 +217,25 @@ type ArgSpec struct {
     Default     any    `json:"default,omitempty"`
 }
 
+type OutputSchema struct {
+    Metrics map[string]MetricSpec `json:"metrics,omitempty"`
+    Data    map[string]DataSpec   `json:"data,omitempty"`
+}
+
+type MetricSpec struct {
+    Type        string `json:"type"`
+    Unit        string `json:"unit,omitempty"`
+    Description string `json:"description,omitempty"`
+}
+
+type DataSpec struct {
+    Type        string `json:"type"`
+    Description string `json:"description,omitempty"`
+}
+
 type Result struct {
     Status  string         `json:"status"`
+    Summary string         `json:"summary,omitempty"`
     Message string         `json:"message"`
     Metrics map[string]any `json:"metrics,omitempty"`
     Data    map[string]any `json:"data,omitempty"`
@@ -231,19 +306,18 @@ if [[ "${1:-}" == "--describe" ]]; then
   "name": "example",
   "description": "Example shell probe",
   "version": "1.0.0",
+  "default_interval": "5m",
   "arguments": {
     "required": {
-      "url": {
-        "type": "string",
-        "description": "URL to check"
-      }
+      "url": {"type": "string", "description": "URL to check"}
     },
     "optional": {
-      "timeout": {
-        "type": "number",
-        "description": "Timeout in seconds",
-        "default": 10
-      }
+      "timeout": {"type": "number", "description": "Timeout in seconds", "default": 10}
+    }
+  },
+  "output": {
+    "data": {
+      "url": {"type": "string", "description": "Checked URL"}
     }
   }
 }
@@ -260,14 +334,12 @@ if [[ -z "$url" ]]; then
 fi
 
 # Perform check
-if response=$(curl --silent --fail --max-time "$timeout" "$url"); then
-    jq --null-input \
-        --arg url "$url" \
-        '{status: "ok", message: "URL is reachable", data: {url: $url}}'
+if curl --silent --fail --max-time "$timeout" "$url" >/dev/null; then
+    jq --null-input --arg url "$url" \
+        '{status: "ok", summary: "reachable", message: "URL is reachable", data: {url: $url}}'
 else
-    jq --null-input \
-        --arg url "$url" \
-        '{status: "critical", message: "URL is unreachable", data: {url: $url}}'
+    jq --null-input --arg url "$url" \
+        '{status: "critical", summary: "unreachable", message: "URL is unreachable", data: {url: $url}}'
 fi
 ```
 

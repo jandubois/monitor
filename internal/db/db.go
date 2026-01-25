@@ -37,7 +37,7 @@ func Connect(ctx context.Context, dbPath string) (*DB, error) {
 	db.SetMaxOpenConns(1)
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
@@ -45,8 +45,8 @@ func Connect(ctx context.Context, dbPath string) (*DB, error) {
 }
 
 // Close closes the database connection.
-func (d *DB) Close() {
-	d.db.Close()
+func (d *DB) Close() error {
+	return d.db.Close()
 }
 
 // DB returns the underlying *sql.DB for direct access.

@@ -191,7 +191,7 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 	slog.Info("watcher registered", "name", req.Name, "version", req.Version, "probe_types", len(req.ProbeTypes), "approved", approved != 0)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"watcher_id":        watcherID,
 		"registered_probes": len(req.ProbeTypes),
 		"approved":          approved != 0,
@@ -225,7 +225,7 @@ func (s *Server) handlePushHeartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
@@ -296,7 +296,7 @@ func (s *Server) handlePushResult(w http.ResponseWriter, r *http.Request) {
 	s.checkStatusChangeAndNotify(ctx, req.ProbeConfigID, probe.Status(req.Status), req.Message)
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (s *Server) checkStatusChangeAndNotify(ctx context.Context, configID int, newStatus probe.Status, message string) {
@@ -423,7 +423,7 @@ func (s *Server) handlePushAlert(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]any{
+	_ = json.NewEncoder(w).Encode(map[string]any{
 		"config_id": configID,
 		"status":    "recorded",
 	})
@@ -486,7 +486,7 @@ func (s *Server) handlePushGetConfigs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(configs)
+	_ = json.NewEncoder(w).Encode(configs)
 }
 
 // parseInterval parses interval strings like "5m", "1h", "1d".

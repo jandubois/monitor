@@ -39,7 +39,7 @@ func runMigrate(dbPath string, down bool) error {
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// Create migrations table if not exists
 	_, err = db.Exec(`

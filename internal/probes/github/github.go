@@ -45,10 +45,11 @@ type branchResponse struct {
 // GetDescription returns the probe description.
 func GetDescription() probe.Description {
 	return probe.Description{
-		Name:        "github",
-		Description: "Check GitHub repository commit activity",
-		Version:     "1.0.0",
-		Subcommand:  Name,
+		Name:            "github",
+		Description:     "Check GitHub repository commit activity",
+		Version:         "1.0.0",
+		Subcommand:      Name,
+		DefaultInterval: "1h",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{
 				"repo": {
@@ -77,6 +78,22 @@ func GetDescription() probe.Description {
 					Description: "Minimum added lines (0 to disable)",
 					Default:     float64(0),
 				},
+			},
+		},
+		Output: probe.OutputSchema{
+			Metrics: map[string]probe.MetricSpec{
+				"age_hours":     {Type: "number", Unit: "hours", Description: "Commit age"},
+				"files_changed": {Type: "integer", Unit: "count", Description: "Files changed"},
+				"additions":     {Type: "integer", Unit: "count", Description: "Lines added"},
+				"deletions":     {Type: "integer", Unit: "count", Description: "Lines deleted"},
+			},
+			Data: map[string]probe.DataSpec{
+				"sha":         {Type: "string", Description: "Short commit SHA"},
+				"full_sha":    {Type: "string", Description: "Full commit SHA"},
+				"title":       {Type: "string", Description: "Commit title"},
+				"body":        {Type: "string", Description: "Commit body"},
+				"url":         {Type: "string", Description: "Commit URL"},
+				"author_date": {Type: "string", Description: "Author date (RFC3339)"},
 			},
 		},
 	}
@@ -141,10 +158,12 @@ func Run(repo, branch, token string, maxAgeHours, minFiles, minAdditions int) *p
 	}
 
 	message := formatCommitMessage(repo, commit, commitURL)
+	summary := fmt.Sprintf("%s: %s", commit.SHA[:7], commitTitle)
 
 	if len(failures) > 0 {
 		return &probe.Result{
 			Status:  probe.StatusCritical,
+			Summary: failures[0],
 			Message: fmt.Sprintf("**Commit check failed:** %s\n\n%s", failures[0], message),
 			Metrics: metrics,
 			Data:    data,
@@ -153,6 +172,7 @@ func Run(repo, branch, token string, maxAgeHours, minFiles, minAdditions int) *p
 
 	return &probe.Result{
 		Status:  probe.StatusOK,
+		Summary: summary,
 		Message: message,
 		Metrics: metrics,
 		Data:    data,
@@ -165,7 +185,7 @@ func getLastCommit(repo, branch, token string) (*Commit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get branch: %w", err)
 	}
-	defer branchResp.Body.Close()
+	defer func() { _ = branchResp.Body.Close() }()
 
 	if branchResp.StatusCode != 200 {
 		return nil, fmt.Errorf("branch request failed: %s", branchResp.Status)
@@ -181,7 +201,7 @@ func getLastCommit(repo, branch, token string) (*Commit, error) {
 	if err != nil {
 		return nil, fmt.Errorf("get commit: %w", err)
 	}
-	defer commitResp.Body.Close()
+	defer func() { _ = commitResp.Body.Close() }()
 
 	if commitResp.StatusCode != 200 {
 		return nil, fmt.Errorf("commit request failed: %s", commitResp.Status)

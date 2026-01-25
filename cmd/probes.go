@@ -110,7 +110,7 @@ func init() {
 			printDescriptions()
 			return
 		}
-		cmd.Help()
+		_ = cmd.Help()
 	}
 
 	// Add probe subcommands
@@ -158,11 +158,11 @@ func init() {
 
 func printDescriptions() {
 	descs := probes.GetAllDescriptions()
-	json.NewEncoder(os.Stdout).Encode(descs)
+	_ = json.NewEncoder(os.Stdout).Encode(descs)
 }
 
 func outputResult(result *probe.Result) {
-	json.NewEncoder(os.Stdout).Encode(result)
+	_ = json.NewEncoder(os.Stdout).Encode(result)
 }
 
 func getGitHubToken() string {

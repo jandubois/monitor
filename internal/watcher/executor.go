@@ -117,9 +117,9 @@ func (e *Executor) runProbe(ctx context.Context, cfg *ProbeConfig) (*probe.Resul
 		if timeoutCtx.Err() == context.DeadlineExceeded {
 			// Try graceful shutdown with SIGTERM
 			if cmd.Process != nil {
-				cmd.Process.Signal(syscall.SIGTERM)
+				_ = cmd.Process.Signal(syscall.SIGTERM)
 				time.Sleep(5 * time.Second)
-				cmd.Process.Kill()
+				_ = cmd.Process.Kill()
 			}
 			return &probe.Result{
 				Status:  probe.StatusUnknown,

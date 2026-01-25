@@ -72,7 +72,7 @@ func TestRunWithMockServer(t *testing.T) {
 	branchHandler := func(w http.ResponseWriter, r *http.Request) {
 		resp := branchResponse{}
 		resp.Commit.SHA = "abc123def456789"
-		json.NewEncoder(w).Encode(resp)
+		_ = json.NewEncoder(w).Encode(resp)
 	}
 	commitHandler := func(w http.ResponseWriter, r *http.Request) {
 		commit := Commit{
@@ -92,7 +92,7 @@ func TestRunWithMockServer(t *testing.T) {
 			{Filename: "file1.go", Additions: 5, Deletions: 2, Changes: 7},
 			{Filename: "file2.go", Additions: 5, Deletions: 3, Changes: 8},
 		}
-		json.NewEncoder(w).Encode(commit)
+		_ = json.NewEncoder(w).Encode(commit)
 	}
 
 	mux := http.NewServeMux()
