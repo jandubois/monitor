@@ -51,13 +51,63 @@ function formatNextRun(dateStr: string | undefined, timeoutSeconds: number): str
   return date.toLocaleDateString();
 }
 
-function isOverdue(nextRunAt: string | undefined, timeoutSeconds: number): boolean {
-  if (!nextRunAt) return false;
+function parseInterval(interval: string): number {
+  const match = interval.match(/^(\d+)(s|m|h|d)$/);
+  if (!match) return 0;
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+  switch (unit) {
+    case 's': return value * 1000;
+    case 'm': return value * 60 * 1000;
+    case 'h': return value * 60 * 60 * 1000;
+    case 'd': return value * 24 * 60 * 60 * 1000;
+    default: return 0;
+  }
+}
+
+// Returns how long the probe is overdue in milliseconds, or 0 if not overdue
+function getOverdueMs(nextRunAt: string | undefined, timeoutSeconds: number): number {
+  if (!nextRunAt) return 0;
   const date = new Date(nextRunAt);
   const now = new Date();
   const diffMs = date.getTime() - now.getTime();
   const overdueThresholdMs = timeoutSeconds * 3 * 1000;
-  return diffMs < 0 && -diffMs > overdueThresholdMs;
+  if (diffMs < 0 && -diffMs > overdueThresholdMs) {
+    return -diffMs;
+  }
+  return 0;
+}
+
+function isOverdue(nextRunAt: string | undefined, timeoutSeconds: number): boolean {
+  return getOverdueMs(nextRunAt, timeoutSeconds) > 0;
+}
+
+// Get effective status considering overdue state
+function getEffectiveStatus(
+  lastStatus: string | undefined,
+  nextRunAt: string | undefined,
+  timeoutSeconds: number,
+  interval: string
+): string | undefined {
+  // If already warning or critical, keep it
+  if (lastStatus === 'warning' || lastStatus === 'critical') {
+    return lastStatus;
+  }
+
+  const overdueMs = getOverdueMs(nextRunAt, timeoutSeconds);
+  if (overdueMs === 0) {
+    return lastStatus;
+  }
+
+  // Overdue: escalate based on how long
+  const intervalMs = parseInterval(interval);
+  if (intervalMs > 0 && overdueMs > intervalMs) {
+    // Overdue by more than one full interval - critical
+    return 'critical';
+  }
+
+  // Overdue but less than one interval - warning
+  return 'warning';
 }
 
 // Status indicator colors
@@ -141,13 +191,16 @@ export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseT
   const summary = config.last_summary || config.last_message?.split('\n')[0] || '';
   const hasDetails = config.last_message && config.last_message !== summary;
   const probeIsOverdue = !isPaused && !isRunning && isOverdue(config.next_run_at, config.timeout_seconds);
+  const effectiveStatus = isPaused || isRunning
+    ? config.last_status
+    : getEffectiveStatus(config.last_status, config.next_run_at, config.timeout_seconds, config.interval);
 
   return (
     <div className={`border-b border-gray-100 ${isPaused ? 'opacity-50' : ''}`}>
       {/* Line 1: Name and timing */}
       <div className="flex items-center justify-between px-3 py-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${getStatusColor(config.last_status)}`} />
+          <div className={`w-2 h-2 rounded-full flex-shrink-0 ${getStatusColor(effectiveStatus)}`} />
           <span className="font-medium text-gray-900 truncate">{config.name}</span>
           {config.orphaned && (
             <span className="text-xs px-1 py-0.5 bg-red-100 text-red-600 rounded" title="No watcher provides this probe type">orphaned</span>
