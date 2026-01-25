@@ -75,11 +75,12 @@ type watcherEvent struct {
 }
 
 type probeConfig struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	ProbeTypeName string `json:"probe_type_name"`
-	WatcherID     *int   `json:"watcher_id"`
-	WatcherName   string `json:"watcher_name"`
+	ID            int            `json:"id"`
+	Name          string         `json:"name"`
+	ProbeTypeName string         `json:"probe_type_name"`
+	WatcherID     *int           `json:"watcher_id"`
+	WatcherName   string         `json:"watcher_name"`
+	Arguments     map[string]any `json:"arguments"`
 }
 
 type registerRequest struct {
@@ -168,6 +169,11 @@ func runMetaWatcher(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("registration failed: %w", err)
 	}
 	slog.Info("registered as watcher", "watcher_id", mw.watcherID, "probe_type_id", mw.probeTypeID)
+
+	// Load existing probe configs to avoid creating duplicates
+	if err := mw.loadExistingConfigs(ctx); err != nil {
+		slog.Warn("failed to load existing configs", "error", err)
+	}
 
 	// Initial check
 	if err := mw.check(ctx); err != nil {
@@ -405,6 +411,29 @@ func (mw *metaWatcher) ensureProbeConfig(ctx context.Context, w watcherInfo) (in
 	slog.Info("created probe config for watcher", "watcher", w.Name, "config_id", resp.ID)
 
 	return resp.ID, nil
+}
+
+// loadExistingConfigs fetches probe configs belonging to this meta-watcher
+// and populates the probeConfigs map to avoid creating duplicates.
+func (mw *metaWatcher) loadExistingConfigs(ctx context.Context) error {
+	var configs []probeConfig
+	if err := mw.getJSON(ctx, fmt.Sprintf("/api/probe-configs?watcher=%d", mw.watcherID), &configs); err != nil {
+		return err
+	}
+
+	for _, cfg := range configs {
+		// Extract target watcher_id from arguments
+		if watcherID, ok := cfg.Arguments["watcher_id"].(float64); ok {
+			mw.probeConfigs[int(watcherID)] = cfg.ID
+			slog.Debug("loaded existing probe config", "config_id", cfg.ID, "target_watcher_id", int(watcherID))
+		}
+	}
+
+	if len(mw.probeConfigs) > 0 {
+		slog.Info("loaded existing probe configs", "count", len(mw.probeConfigs))
+	}
+
+	return nil
 }
 
 func (mw *metaWatcher) fetchWatchers(ctx context.Context) ([]watcherInfo, error) {

@@ -125,18 +125,27 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		isNewWatcher = true
 		slog.Info("new watcher registered (pending approval)", "name", req.Name)
 	} else {
-		// Existing watcher - verify token matches
-		if existingToken != nil && *existingToken != req.Token {
-			slog.Warn("watcher token mismatch", "name", req.Name)
-			http.Error(w, "token mismatch", http.StatusForbidden)
-			return
-		}
+		// Existing watcher - check if token changed
+		tokenChanged := existingToken != nil && *existingToken != req.Token
 
-		// Update existing watcher (preserve approved status, update token if not set)
-		_, err = s.db.DB().ExecContext(ctx, `
-			UPDATE watchers SET version = ?, token = ?, callback_url = ?, last_seen_at = ?
-			WHERE id = ?
-		`, req.Version, req.Token, req.CallbackURL, now, watcherID)
+		if tokenChanged {
+			// Token changed - update token and require re-approval
+			_, err = s.db.DB().ExecContext(ctx, `
+				UPDATE watchers SET version = ?, token = ?, callback_url = ?, last_seen_at = ?, paused = 1, approved = 0
+				WHERE id = ?
+			`, req.Version, req.Token, req.CallbackURL, now, watcherID)
+			approved = 0
+			slog.Info("watcher reconnected with new token (pending approval)", "name", req.Name)
+			_ = s.insertWatcherEvent(ctx, watcherID, EventTokenChanged, SeverityWarning,
+				"Watcher reconnected with new token (requires re-approval)",
+				map[string]any{"version": req.Version})
+		} else {
+			// Same token - preserve approved status
+			_, err = s.db.DB().ExecContext(ctx, `
+				UPDATE watchers SET version = ?, token = ?, callback_url = ?, last_seen_at = ?
+				WHERE id = ?
+			`, req.Version, req.Token, req.CallbackURL, now, watcherID)
+		}
 		if err != nil {
 			slog.Error("failed to update watcher", "name", req.Name, "error", err)
 			http.Error(w, "failed to update watcher", http.StatusInternalServerError)

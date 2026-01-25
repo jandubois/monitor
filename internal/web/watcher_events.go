@@ -12,6 +12,7 @@ import (
 // Event types for watcher events.
 const (
 	EventRegistered             = "registered"
+	EventTokenChanged           = "token_changed"
 	EventConnectionLost         = "connection_lost"
 	EventConnectionRestored     = "connection_restored"
 	EventProbeVersionUpgrade    = "probe_version_upgrade"
