@@ -18,11 +18,10 @@ function formatRelativeTime(timestamp: string): string {
 
 interface DashboardProps {
   onProbeClick: (config: ProbeConfig) => void;
-  onConfigClick: () => void;
   onFailuresClick: () => void;
 }
 
-export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: DashboardProps) {
+export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
   const [keywordFilter, setKeywordFilter] = useState('');
@@ -207,12 +206,6 @@ export function Dashboard({ onProbeClick, onConfigClick, onFailuresClick }: Dash
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
           >
             Add Probe
-          </button>
-          <button
-            onClick={onConfigClick}
-            className="px-4 py-2 bg-gray-800 text-white rounded hover:bg-gray-700"
-          >
-            Configure
           </button>
         </div>
       </div>

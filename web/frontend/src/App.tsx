@@ -4,7 +4,6 @@ import { api } from './api/client';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { ProbeDetail } from './pages/ProbeDetail';
-import { Config } from './pages/Config';
 import { Failures } from './pages/Failures';
 import type { ProbeConfig } from './api/types';
 
@@ -17,7 +16,7 @@ const queryClient = new QueryClient({
   },
 });
 
-type Page = 'dashboard' | 'config' | 'detail' | 'failures';
+type Page = 'dashboard' | 'detail' | 'failures';
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false);
@@ -66,8 +65,6 @@ function App() {
             config={selectedConfig}
             onBack={() => setPage('dashboard')}
           />
-        ) : page === 'config' ? (
-          <Config onBack={() => setPage('dashboard')} />
         ) : page === 'failures' ? (
           <Failures
             onBack={() => setPage('dashboard')}
@@ -76,7 +73,6 @@ function App() {
         ) : (
           <Dashboard
             onProbeClick={handleProbeClick}
-            onConfigClick={() => setPage('config')}
             onFailuresClick={() => setPage('failures')}
           />
         )}
