@@ -5,17 +5,9 @@ import { ProbeRow } from '../components/ProbeRow';
 import { ProbeConfigForm } from '../components/ProbeConfigForm';
 import { WatchersGroup } from '../components/WatchersGroup';
 import { COLOR_PALETTE, getColorByIndex } from '../utils/keywordColors';
-import type { ProbeConfig, ProbeResult } from '../api/types';
+import type { ProbeConfig } from '../api/types';
 
 const COLLAPSED_GROUPS_KEY = 'dashboard-collapsed-groups';
-
-function formatRelativeTime(timestamp: string): string {
-  const diff = Date.now() - new Date(timestamp).getTime();
-  if (diff < 60000) return 'now';
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
-  return `${Math.floor(diff / 86400000)}d`;
-}
 
 interface DashboardProps {
   onProbeClick: (config: ProbeConfig) => void;
@@ -66,12 +58,6 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
       document.title = `Monitor Dashboard on ${status.server_name}`;
     }
   }, [status?.server_name]);
-
-  const { data: stats } = useQuery({
-    queryKey: ['stats'],
-    queryFn: () => api.getResultStats(),
-    refetchInterval: 30000,
-  });
 
   const { data: configs, isLoading } = useQuery({
     queryKey: ['probeConfigs'],
@@ -241,7 +227,31 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
         <h1 className="text-2xl font-bold text-gray-900">
           Monitor Dashboard{status?.server_name ? ` on ${status.server_name}` : ''}
         </h1>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-4">
+          {recentFailures && recentFailures.length > 0 ? (
+            <button
+              onClick={onFailuresClick}
+              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+            >
+              <span className="w-2 h-2 rounded-full bg-red-500" />
+              <span className="font-medium">{recentFailures.length} failure{recentFailures.length > 1 ? 's' : ''}</span>
+            </button>
+          ) : (
+            <span className="text-green-600 text-sm">No failures</span>
+          )}
+          <span className="text-gray-300">|</span>
+          <button
+            onClick={() => setShowManageModal('groups')}
+            className="text-gray-500 hover:text-gray-700 text-sm"
+          >
+            Groups
+          </button>
+          <button
+            onClick={() => setShowManageModal('keywords')}
+            className="text-gray-500 hover:text-gray-700 text-sm"
+          >
+            Keywords
+          </button>
           <button
             onClick={() => { setEditingConfig(null); setShowForm(true); }}
             className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
@@ -251,111 +261,18 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
-          <div className="text-sm text-gray-500">Watchers</div>
-          <div className="mt-1">
-            {status?.watchers?.length ? (
-              <div className="flex flex-wrap gap-2">
-                {status.watchers.map((w) => (
-                  <span
-                    key={w.name}
-                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                      w.paused
-                        ? 'bg-gray-200 text-gray-500'
-                        : w.healthy
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
-                    }`}
-                    title={w.version ? `v${w.version}` : undefined}
-                  >
-                    {w.name}
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <span className="text-gray-400">No watchers</span>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
-          <div className="text-sm text-gray-500">Active Probes</div>
-          <div className="text-lg font-semibold text-gray-900">
-            {stats?.enabled_configs ?? '-'} / {stats?.total_configs ?? '-'}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-lg shadow p-4 border border-gray-200">
-          <div className="text-sm text-gray-500">Status Summary</div>
-          <div className="flex gap-2 mt-1">
-            <span className="text-green-600">{stats?.status_counts?.ok ?? 0} OK</span>
-            <span className="text-yellow-600">{stats?.status_counts?.warning ?? 0} Warn</span>
-            <span className="text-red-600">{stats?.status_counts?.critical ?? 0} Crit</span>
-          </div>
-        </div>
-
-        <div
-          className="bg-white rounded-lg shadow p-4 border border-gray-200 cursor-pointer hover:bg-gray-50"
-          onClick={onFailuresClick}
-        >
-          <div className="text-sm text-gray-500 flex items-center justify-between">
-            <span>Recent Failures</span>
-            <span className="text-xs text-gray-400">View all →</span>
-          </div>
-          {recentFailures && recentFailures.length > 0 ? (
-            <div className="mt-2 space-y-1 max-h-32 overflow-y-auto">
-              {recentFailures.slice(0, 5).map((f: ProbeResult) => (
-                <div key={f.id} className="flex items-center gap-2 text-sm">
-                  <span
-                    className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                      f.status === 'critical' ? 'bg-red-500' :
-                      f.status === 'warning' ? 'bg-yellow-500' : 'bg-gray-500'
-                    }`}
-                  />
-                  <span className="font-medium text-gray-700 truncate">{f.config_name}</span>
-                  <span className="text-gray-400 text-xs flex-shrink-0">{formatRelativeTime(f.executed_at)}</span>
-                </div>
-              ))}
-              {recentFailures.length > 5 && (
-                <div className="text-xs text-gray-400 pl-4">
-                  +{recentFailures.length - 5} more
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-lg font-semibold text-green-600 mt-1">None</div>
-          )}
-        </div>
-      </div>
-
-      <div className="mb-4 flex items-center gap-4">
-        <input
-          type="text"
-          value={keywordFilter}
-          onChange={(e) => setKeywordFilter(e.target.value)}
-          placeholder="Filter by keyword..."
-          className="flex-1 max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
-        <div className="flex gap-2 text-sm">
-          <button
-            onClick={() => setShowManageModal('groups')}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            Manage Groups
-          </button>
-          <span className="text-gray-300">|</span>
-          <button
-            onClick={() => setShowManageModal('keywords')}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            Manage Keywords
-          </button>
-        </div>
-      </div>
-
       <div className="space-y-4">
         <WatchersGroup />
+
+        <div>
+          <input
+            type="text"
+            value={keywordFilter}
+            onChange={(e) => setKeywordFilter(e.target.value)}
+            placeholder="Filter by keyword..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
 
         {isLoading ? (
           <div className="text-center py-12 text-gray-500">Loading probes...</div>
