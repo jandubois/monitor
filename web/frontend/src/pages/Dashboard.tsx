@@ -18,6 +18,8 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
   const [keywordFilter, setKeywordFilter] = useState('');
+  const [selectedKeyword, setSelectedKeyword] = useState<string>('');
+  const [groupBy, setGroupBy] = useState<'group' | 'watcher'>('group');
   const [focusedGroup, setFocusedGroup] = useState<string | null>(null);
   const [showManageModal, setShowManageModal] = useState<'groups' | 'keywords' | null>(null);
   const [runningProbes, setRunningProbes] = useState<Set<number>>(new Set());
@@ -192,8 +194,22 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
     },
   });
 
-  // Filter by keyword, then sort, then group
+  // Collect all unique keywords for the dropdown
+  const allKeywords = useMemo(() => {
+    const keywords = new Set<string>();
+    configs?.forEach(config => {
+      config.keywords?.forEach(k => keywords.add(k));
+    });
+    return Array.from(keywords).sort();
+  }, [configs]);
+
+  // Filter by text filter and selected keyword, then sort, then group
   const filteredConfigs = configs?.filter(config => {
+    // Filter by selected keyword (exact match)
+    if (selectedKeyword && !config.keywords?.includes(selectedKeyword)) {
+      return false;
+    }
+    // Filter by text search
     if (!keywordFilter.trim()) return true;
     const filterLower = keywordFilter.toLowerCase();
     // Match against keywords array if present
@@ -212,9 +228,11 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
     return aOrder - bOrder;
   });
 
-  // Group configs by group_path
+  // Group configs by group_path or watcher
   const groupedConfigs = sortedConfigs?.reduce((acc, config) => {
-    const group = config.group_path || 'Uncategorized';
+    const group = groupBy === 'watcher'
+      ? (config.watcher_name || 'Local')
+      : (config.group_path || 'Uncategorized');
     if (!acc[group]) acc[group] = [];
     acc[group].push(config);
     return acc;
@@ -271,14 +289,45 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
       <div className="space-y-4">
         <WatchersGroup />
 
-        <div>
+        <div className="flex items-center gap-2 text-sm">
           <input
             type="text"
             value={keywordFilter}
             onChange={(e) => setKeywordFilter(e.target.value)}
-            placeholder="Filter by keyword..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Filter..."
+            className="w-32 px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
           />
+          <div className="flex items-center">
+            <select
+              value={selectedKeyword}
+              onChange={(e) => setSelectedKeyword(e.target.value)}
+              className="px-2 py-1 border border-gray-300 rounded-l focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+            >
+              <option value="">All Keywords</option>
+              {allKeywords.map(kw => (
+                <option key={kw} value={kw}>{kw}</option>
+              ))}
+            </select>
+            {selectedKeyword && (
+              <button
+                onClick={() => setSelectedKeyword('')}
+                className="px-1.5 py-1 border border-l-0 border-gray-300 rounded-r bg-gray-50 hover:bg-gray-100 text-gray-500"
+                title="Clear keyword filter"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+          <select
+            value={groupBy}
+            onChange={(e) => { setGroupBy(e.target.value as 'group' | 'watcher'); setFocusedGroup(null); }}
+            className="px-2 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
+          >
+            <option value="group">By Group</option>
+            <option value="watcher">By Watcher</option>
+          </select>
         </div>
 
         {isLoading ? (
@@ -370,6 +419,7 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
                             deleteMutation.mutate(config.id);
                           }
                         }}
+                        onKeywordClick={setSelectedKeyword}
                       />
                     ))}
                   </div>

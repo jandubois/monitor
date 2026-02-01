@@ -13,6 +13,7 @@ interface ProbeRowProps {
   onRerun?: () => void;
   onPauseToggle?: () => void;
   onDelete?: () => void;
+  onKeywordClick?: (keyword: string) => void;
 }
 
 function formatRelativeTime(dateStr: string | undefined): string {
@@ -196,7 +197,7 @@ function TrashIcon() {
   );
 }
 
-export function ProbeRow({ config, keywordColors = {}, isRunning, onClick, onEdit, onRerun, onPauseToggle, onDelete }: ProbeRowProps) {
+export function ProbeRow({ config, keywordColors = {}, isRunning, onClick, onEdit, onRerun, onPauseToggle, onDelete, onKeywordClick }: ProbeRowProps) {
   const isPaused = !config.enabled;
   const [isExpanded, setIsExpanded] = useState(false);
   const summary = config.last_summary || config.last_message?.split('\n')[0] || '';
@@ -226,12 +227,13 @@ export function ProbeRow({ config, keywordColors = {}, isRunning, onClick, onEdi
             const colorIndex = keywordColors[kw] ?? 0;
             const color = getColorByIndex(colorIndex);
             return (
-              <span
+              <button
                 key={kw}
-                className={`text-xs px-1.5 py-0.5 rounded ${color.bg} ${color.text}`}
+                onClick={(e) => { e.stopPropagation(); onKeywordClick?.(kw); }}
+                className={`text-xs px-1.5 py-0.5 rounded ${color.bg} ${color.text} hover:opacity-80`}
               >
                 {kw}
-              </span>
+              </button>
             );
           })}
         </div>
