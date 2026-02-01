@@ -82,6 +82,7 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [settingsExpanded, setSettingsExpanded] = useState(!editingConfig);
 
   const selectedType = allProbeTypes.find((pt) => pt.id === probeTypeId);
 
@@ -243,82 +244,123 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
-          <h3 className="text-lg font-semibold mb-4">
-            {editingConfig ? 'Edit Probe' : 'Add Probe'}
-          </h3>
-
+      <div className="bg-gray-100 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        <div className="p-4">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Two-column layout for main fields */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* Probe Type - first, and disabled when editing */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Probe Type</label>
-                {editingConfig ? (
-                  <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
-                    {editingConfig.probe_type_name}
+            {/* Title and Name in same row */}
+            <div className="flex items-center gap-4 bg-white shadow-sm rounded-lg px-3 py-2">
+              <h3 className="text-lg font-semibold whitespace-nowrap">
+                {editingConfig ? 'Edit Probe' : 'Add Probe'}
+              </h3>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => {
+                  const newValue = e.target.value;
+                  setName(newValue);
+                  setNameManuallyEdited(newValue !== '');
+                }}
+                required
+                className="flex-1 px-3 py-1.5 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Probe name"
+              />
+            </div>
+
+            {/* Collapsible settings section */}
+            <div className="shadow-sm rounded-lg bg-white overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setSettingsExpanded(!settingsExpanded)}
+                className="w-full px-3 py-2 flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-left"
+              >
+                <svg
+                  className={`w-4 h-4 text-gray-500 transition-transform ${settingsExpanded ? 'rotate-90' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <span className="text-sm font-medium text-gray-700">Settings</span>
+                {!settingsExpanded && (
+                  <div className="flex items-center gap-2 ml-2 text-sm flex-wrap">
+                    {(() => {
+                      const watcherName = editingConfig?.watcher_name || watchers.find(w => w.id === watcherId)?.name;
+                      const watcher = watchers.find(w => w.name === watcherName);
+                      const watcherColor = watcher
+                        ? (!watcher.approved ? 'text-orange-600' : watcher.paused ? 'text-gray-400' : watcher.healthy ? 'text-green-600' : 'text-red-600')
+                        : 'text-gray-600';
+                      return <span className={watcherColor}>{watcherName}</span>;
+                    })()}
+                    {groupPath && <span className="text-gray-400">· {groupPath}</span>}
+                    <span className="text-gray-400">· {interval}, {timeout}s</span>
+                    {selectedKeywords.map(kw => {
+                      const color = getKeywordColor(kw);
+                      return (
+                        <span key={kw} className={`px-1.5 py-0.5 rounded text-xs ${color.bg} ${color.text}`}>
+                          {kw}
+                        </span>
+                      );
+                    })}
+                    {!enabled && <span className="text-gray-400">· paused</span>}
                   </div>
-                ) : (
-                  <select
-                    value={probeTypeId}
-                    onChange={(e) => {
-                      setProbeTypeId(Number(e.target.value));
-                      setArgs({});
-                    }}
-                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                  >
-                    {allProbeTypes.map((pt) => (
-                      <option key={pt.id} value={pt.id}>{pt.name} (v{pt.version})</option>
-                    ))}
-                  </select>
                 )}
-              </div>
+              </button>
 
-              {/* Watcher - filtered by probe type */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Watcher</label>
-                {editingConfig ? (
-                  <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
-                    {editingConfig.watcher_name}
-                  </div>
-                ) : (
-                  <select
-                    value={watcherId}
-                    onChange={(e) => setWatcherId(Number(e.target.value))}
-                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                    disabled={availableWatchers.length === 0}
-                  >
-                    {availableWatchers.length === 0 ? (
-                      <option value="">No watchers available</option>
-                    ) : (
-                      availableWatchers.map((w) => (
-                        <option key={w.id} value={w.id}>{w.name}</option>
-                      ))
-                    )}
-                  </select>
-                )}
-              </div>
+              {settingsExpanded && (
+                <div className="p-3 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Probe Type */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Probe Type</label>
+                      {editingConfig ? (
+                        <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
+                          {editingConfig.probe_type_name}
+                        </div>
+                      ) : (
+                        <select
+                          value={probeTypeId}
+                          onChange={(e) => {
+                            setProbeTypeId(Number(e.target.value));
+                            setArgs({});
+                          }}
+                          className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                        >
+                          {allProbeTypes.map((pt) => (
+                            <option key={pt.id} value={pt.id}>{pt.name} (v{pt.version})</option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => {
-                    const newValue = e.target.value;
-                    setName(newValue);
-                    // If cleared, restore template behavior; otherwise mark as manually edited
-                    setNameManuallyEdited(newValue !== '');
-                  }}
-                  required
-                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="My probe"
-                />
-              </div>
+                    {/* Watcher */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Watcher</label>
+                      {editingConfig ? (
+                        <div className="px-3 py-2 border rounded bg-gray-50 text-gray-700">
+                          {editingConfig.watcher_name}
+                        </div>
+                      ) : (
+                        <select
+                          value={watcherId}
+                          onChange={(e) => setWatcherId(Number(e.target.value))}
+                          className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                          disabled={availableWatchers.length === 0}
+                        >
+                          {availableWatchers.length === 0 ? (
+                            <option value="">No watchers available</option>
+                          ) : (
+                            availableWatchers.map((w) => (
+                              <option key={w.id} value={w.id}>{w.name}</option>
+                            ))
+                          )}
+                        </select>
+                      )}
+                    </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
+                    {/* Group */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
                 {isCustomGroup ? (
                   <div className="flex gap-2">
                     <input
@@ -375,44 +417,47 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
                     )}
                     <option value="__custom__">+ Add new group...</option>
                   </select>
-                )}
-              </div>
+                      )}
+                    </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Interval
-                  {selectedType?.default_interval && (
-                    <span className="text-gray-400 font-normal ml-1">(default: {selectedType.default_interval})</span>
-                  )}
-                </label>
-                <select
-                  value={interval}
-                  onChange={(e) => setInterval(e.target.value)}
-                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="1m">1 minute</option>
-                  <option value="5m">5 minutes</option>
-                  <option value="15m">15 minutes</option>
-                  <option value="30m">30 minutes</option>
-                  <option value="1h">1 hour</option>
-                  <option value="6h">6 hours</option>
-                  <option value="1d">1 day</option>
-                </select>
-              </div>
+                    {/* Interval */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Interval
+                        {selectedType?.default_interval && (
+                          <span className="text-gray-400 font-normal ml-1">(default: {selectedType.default_interval})</span>
+                        )}
+                      </label>
+                      <select
+                        value={interval}
+                        onChange={(e) => setInterval(e.target.value)}
+                        className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="1m">1 minute</option>
+                        <option value="5m">5 minutes</option>
+                        <option value="15m">15 minutes</option>
+                        <option value="30m">30 minutes</option>
+                        <option value="1h">1 hour</option>
+                        <option value="6h">6 hours</option>
+                        <option value="1d">1 day</option>
+                      </select>
+                    </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Timeout (s)</label>
-                <input
-                  type="number"
-                  value={timeout}
-                  onChange={(e) => setTimeout(Number(e.target.value))}
-                  min={1}
-                  max={600}
-                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
+                    {/* Timeout */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Timeout (s)</label>
+                      <input
+                        type="number"
+                        value={timeout}
+                        onChange={(e) => setTimeout(Number(e.target.value))}
+                        min={1}
+                        max={600}
+                        className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
 
-              <div className="col-span-2">
+                    {/* Keywords - full width */}
+                    <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Keywords</label>
                 <div className="space-y-2">
                   {/* Selected keywords as removable tags */}
@@ -471,29 +516,35 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
                         }
                       }
                     }}
-                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
-                    placeholder="Add new keyword..."
-                  />
+                      className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                      placeholder="Add new keyword..."
+                    />
+                  </div>
+                    </div>
+                  </div>
+
+                  {/* Paused checkbox */}
+                  <div className="flex items-center gap-2 mt-2">
+                    <input
+                      type="checkbox"
+                      id="paused"
+                      checked={!enabled}
+                      onChange={(e) => setEnabled(!e.target.checked)}
+                      className="rounded"
+                    />
+                    <label htmlFor="paused" className="text-sm text-gray-700">Paused</label>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="paused"
-                checked={!enabled}
-                onChange={(e) => setEnabled(!e.target.checked)}
-                className="rounded"
-              />
-              <label htmlFor="paused" className="text-sm text-gray-700">Paused</label>
-            </div>
-
-            {/* Arguments in two columns */}
+            {/* Arguments section */}
             {selectedType?.arguments && (
-              <div className="border-t pt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Arguments</h4>
-                <div className="grid grid-cols-2 gap-3">
+              <div className="shadow-sm rounded-lg bg-white overflow-hidden">
+                <div className="px-3 py-2 bg-gray-200">
+                  <span className="text-sm font-medium text-gray-700">Arguments</span>
+                </div>
+                <div className="p-3 grid grid-cols-2 gap-3">
                   {selectedType.arguments.required && Object.entries(selectedType.arguments.required).map(([key, spec]) => (
                     <div key={key}>
                       <label className="block text-sm text-gray-600 mb-1">
@@ -583,7 +634,7 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
 
             {error && <p className="text-red-600 text-sm">{error}</p>}
 
-            <div className="flex justify-end gap-3 pt-4 border-t">
+            <div className="flex justify-end gap-3 pt-2">
               <button
                 type="button"
                 onClick={onClose}
