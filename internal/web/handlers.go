@@ -1,6 +1,7 @@
 package web
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -721,6 +722,252 @@ func (s *Server) handleDeleteProbeConfig(w http.ResponseWriter, r *http.Request)
 	id, _ := strconv.Atoi(r.PathValue("id"))
 
 	_, err := s.db.DB().ExecContext(ctx, `DELETE FROM probe_configs WHERE id = ?`, id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleRenameGroup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		OldName string `json:"old_name"`
+		NewName string `json:"new_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.OldName == "" {
+		http.Error(w, "old_name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Update all probe configs with the old group name
+	// Empty new_name means remove the group (set to NULL)
+	var result sql.Result
+	var err error
+	if req.NewName == "" {
+		result, err = s.db.DB().ExecContext(ctx,
+			`UPDATE probe_configs SET group_path = NULL WHERE group_path = ?`,
+			req.OldName)
+	} else {
+		result, err = s.db.DB().ExecContext(ctx,
+			`UPDATE probe_configs SET group_path = ? WHERE group_path = ?`,
+			req.NewName, req.OldName)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	affected, _ := result.RowsAffected()
+	slog.Info("group renamed", "old_name", req.OldName, "new_name", req.NewName, "probes_updated", affected)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]int64{"probes_updated": affected})
+}
+
+func (s *Server) handleRenameKeyword(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		OldName string `json:"old_name"`
+		NewName string `json:"new_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.OldName == "" {
+		http.Error(w, "old_name is required", http.StatusBadRequest)
+		return
+	}
+
+	// Find all probe configs that have this keyword
+	rows, err := s.db.DB().QueryContext(ctx,
+		`SELECT id, keywords FROM probe_configs WHERE keywords LIKE ?`,
+		`%"`+req.OldName+`"%`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	// Collect all updates first, then close rows before executing updates
+	type probeUpdate struct {
+		id          int
+		newKeywords []string
+	}
+	var updates []probeUpdate
+
+	for rows.Next() {
+		var id int
+		var keywordsJSON sql.NullString
+		if err := rows.Scan(&id, &keywordsJSON); err != nil {
+			continue
+		}
+
+		if !keywordsJSON.Valid {
+			continue
+		}
+
+		var keywords []string
+		if err := json.Unmarshal([]byte(keywordsJSON.String), &keywords); err != nil {
+			continue
+		}
+
+		// Replace the keyword
+		changed := false
+		newKeywords := make([]string, 0, len(keywords))
+		for _, k := range keywords {
+			if k == req.OldName {
+				if req.NewName != "" {
+					newKeywords = append(newKeywords, req.NewName)
+				}
+				changed = true
+			} else {
+				newKeywords = append(newKeywords, k)
+			}
+		}
+
+		if changed {
+			updates = append(updates, probeUpdate{id: id, newKeywords: newKeywords})
+		}
+	}
+	rows.Close()
+
+	// Now execute the updates
+	var affected int64
+	for _, u := range updates {
+		var newKeywordsJSON any
+		if len(u.newKeywords) > 0 {
+			jsonBytes, _ := json.Marshal(u.newKeywords)
+			newKeywordsJSON = string(jsonBytes)
+		}
+
+		_, err := s.db.DB().ExecContext(ctx,
+			`UPDATE probe_configs SET keywords = ? WHERE id = ?`,
+			newKeywordsJSON, u.id)
+		if err == nil {
+			affected++
+		}
+	}
+
+	// If keyword was deleted (not renamed), also remove from keyword_colors
+	if req.NewName == "" {
+		_, _ = s.db.DB().ExecContext(ctx, `DELETE FROM keyword_colors WHERE keyword = ?`, req.OldName)
+	}
+
+	slog.Info("keyword renamed", "old_name", req.OldName, "new_name", req.NewName, "probes_updated", affected)
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]int64{"probes_updated": affected})
+}
+
+func (s *Server) handleGetKeywordColors(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Get existing color assignments
+	rows, err := s.db.DB().QueryContext(ctx, `SELECT keyword, color_index FROM keyword_colors`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	colors := make(map[string]int)
+	usedIndices := make(map[int]bool)
+	for rows.Next() {
+		var keyword string
+		var colorIndex int
+		if err := rows.Scan(&keyword, &colorIndex); err != nil {
+			continue
+		}
+		colors[keyword] = colorIndex
+		usedIndices[colorIndex] = true
+	}
+	rows.Close()
+
+	// Get all keywords from probe_configs
+	configRows, err := s.db.DB().QueryContext(ctx, `SELECT keywords FROM probe_configs WHERE keywords IS NOT NULL`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	allKeywords := make(map[string]bool)
+	for configRows.Next() {
+		var keywordsJSON string
+		if err := configRows.Scan(&keywordsJSON); err != nil {
+			continue
+		}
+		var keywords []string
+		if err := json.Unmarshal([]byte(keywordsJSON), &keywords); err != nil {
+			continue
+		}
+		for _, kw := range keywords {
+			allKeywords[kw] = true
+		}
+	}
+	configRows.Close()
+
+	// Auto-assign colors to keywords without one
+	const numColors = 20 // Must match frontend COLOR_PALETTE length
+	for kw := range allKeywords {
+		if _, exists := colors[kw]; !exists {
+			// Find next unused color index
+			nextIndex := 0
+			for i := 0; i < numColors; i++ {
+				if !usedIndices[i] {
+					nextIndex = i
+					break
+				}
+				nextIndex = i + 1
+			}
+			nextIndex = nextIndex % numColors
+
+			// Save to database
+			_, err := s.db.DB().ExecContext(ctx, `
+				INSERT INTO keyword_colors (keyword, color_index) VALUES (?, ?)
+				ON CONFLICT(keyword) DO NOTHING
+			`, kw, nextIndex)
+			if err == nil {
+				colors[kw] = nextIndex
+				usedIndices[nextIndex] = true
+			}
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(colors)
+}
+
+func (s *Server) handleSetKeywordColor(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var req struct {
+		Keyword    string `json:"keyword"`
+		ColorIndex int    `json:"color_index"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Keyword == "" {
+		http.Error(w, "keyword is required", http.StatusBadRequest)
+		return
+	}
+
+	_, err := s.db.DB().ExecContext(ctx, `
+		INSERT INTO keyword_colors (keyword, color_index) VALUES (?, ?)
+		ON CONFLICT(keyword) DO UPDATE SET color_index = ?
+	`, req.Keyword, req.ColorIndex, req.ColorIndex)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

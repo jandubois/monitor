@@ -199,6 +199,31 @@ class ApiClient {
     });
   }
 
+  async renameGroup(oldName: string, newName: string): Promise<{ probes_updated: number }> {
+    return this.request('/groups', {
+      method: 'PUT',
+      body: JSON.stringify({ old_name: oldName, new_name: newName }),
+    });
+  }
+
+  async renameKeyword(oldName: string, newName: string): Promise<{ probes_updated: number }> {
+    return this.request('/keywords', {
+      method: 'PUT',
+      body: JSON.stringify({ old_name: oldName, new_name: newName }),
+    });
+  }
+
+  async getKeywordColors(): Promise<Record<string, number>> {
+    return this.request('/keyword-colors');
+  }
+
+  async setKeywordColor(keyword: string, colorIndex: number): Promise<void> {
+    return this.request('/keyword-colors', {
+      method: 'PUT',
+      body: JSON.stringify({ keyword, color_index: colorIndex }),
+    });
+  }
+
   // Results
   async getResults(params?: {
     config_id?: number;

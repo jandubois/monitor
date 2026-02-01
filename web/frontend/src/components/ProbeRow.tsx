@@ -2,9 +2,11 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
 import type { ProbeConfig } from '../api/types';
+import { getColorByIndex } from '../utils/keywordColors';
 
 interface ProbeRowProps {
   config: ProbeConfig;
+  keywordColors?: Record<string, number>;
   isRunning?: boolean;
   onClick?: () => void;
   onEdit?: () => void;
@@ -194,7 +196,7 @@ function TrashIcon() {
   );
 }
 
-export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseToggle, onDelete }: ProbeRowProps) {
+export function ProbeRow({ config, keywordColors = {}, isRunning, onClick, onEdit, onRerun, onPauseToggle, onDelete }: ProbeRowProps) {
   const isPaused = !config.enabled;
   const [isExpanded, setIsExpanded] = useState(false);
   const summary = config.last_summary || config.last_message?.split('\n')[0] || '';
@@ -220,6 +222,18 @@ export function ProbeRow({ config, isRunning, onClick, onEdit, onRerun, onPauseT
           {isPaused && !config.orphaned && !probeIsOverdue && (
             <span className="text-xs px-1 py-0.5 bg-gray-200 text-gray-500 rounded">paused</span>
           )}
+          {config.keywords?.map(kw => {
+            const colorIndex = keywordColors[kw] ?? 0;
+            const color = getColorByIndex(colorIndex);
+            return (
+              <span
+                key={kw}
+                className={`text-xs px-1.5 py-0.5 rounded ${color.bg} ${color.text}`}
+              >
+                {kw}
+              </span>
+            );
+          })}
         </div>
         <div className="text-xs text-gray-400 flex-shrink-0 ml-2">
           {formatRelativeTime(config.last_executed_at)}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { getColorByIndex, getNextColorIndex } from '../utils/keywordColors';
 import type { ProbeConfig, Watcher, ProbeType } from '../api/types';
 
 // Expand a template string with the given context
@@ -21,17 +22,45 @@ interface ProbeConfigFormProps {
   watchers: Watcher[];
   editingConfig: ProbeConfig | null;
   initialProbeTypeId?: number;
+  keywordColors?: Record<string, number>;
   onClose: () => void;
   onSaved: () => void;
   onRerun?: (id: number) => void;
 }
 
-export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, onClose, onSaved, onRerun }: ProbeConfigFormProps) {
+export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, keywordColors = {}, onClose, onSaved, onRerun }: ProbeConfigFormProps) {
   // Fetch all probe types (not filtered by watcher)
   const { data: allProbeTypes = [] } = useQuery({
     queryKey: ['probeTypes'],
     queryFn: () => api.getProbeTypes(),
   });
+
+  // Fetch probe configs to extract existing groups and keywords
+  const { data: probeConfigs = [] } = useQuery({
+    queryKey: ['probeConfigs'],
+    queryFn: () => api.getProbeConfigs(),
+    staleTime: 0, // Always fetch fresh data when form opens
+  });
+
+  // Extract unique group names from existing configs
+  const existingGroups = useMemo(() => {
+    const groups = new Set<string>();
+    probeConfigs.forEach(config => {
+      if (config.group_path) {
+        groups.add(config.group_path);
+      }
+    });
+    return Array.from(groups).sort();
+  }, [probeConfigs]);
+
+  // Extract unique keywords from existing configs
+  const existingKeywords = useMemo(() => {
+    const kw = new Set<string>();
+    probeConfigs.forEach(config => {
+      config.keywords?.forEach(k => kw.add(k));
+    });
+    return Array.from(kw).sort();
+  }, [probeConfigs]);
 
   const [probeTypeId, setProbeTypeId] = useState<number>(editingConfig?.probe_type_id ?? initialProbeTypeId ?? 0);
   const [name, setName] = useState(editingConfig?.name ?? '');
@@ -41,7 +70,11 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, o
   const [interval, setInterval] = useState(editingConfig?.interval ?? '5m');
   const [timeout, setTimeout] = useState(editingConfig?.timeout_seconds ?? 60);
   const [groupPath, setGroupPath] = useState(editingConfig?.group_path ?? '');
-  const [keywords, setKeywords] = useState(editingConfig?.keywords?.join(', ') ?? '');
+  const [isCustomGroup, setIsCustomGroup] = useState(false);
+  const [selectedKeywords, setSelectedKeywords] = useState<string[]>(editingConfig?.keywords ?? []);
+  const [newKeyword, setNewKeyword] = useState('');
+  // Track temporary colors for new keywords that don't have a color yet
+  const [tempKeywordColors, setTempKeywordColors] = useState<Record<string, number>>({});
   const [args, setArgs] = useState<Record<string, string>>(
     Object.fromEntries(
       Object.entries(editingConfig?.arguments ?? {}).map(([k, v]) => [k, String(v)])
@@ -51,6 +84,26 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, o
   const [error, setError] = useState('');
 
   const selectedType = allProbeTypes.find((pt) => pt.id === probeTypeId);
+
+  // Get color for a keyword, assigning a temp color if it doesn't have one
+  const getKeywordColor = useCallback((kw: string) => {
+    // Use assigned color if available
+    if (keywordColors[kw] !== undefined) {
+      return getColorByIndex(keywordColors[kw]);
+    }
+    // Use temp color if already assigned
+    if (tempKeywordColors[kw] !== undefined) {
+      return getColorByIndex(tempKeywordColors[kw]);
+    }
+    // Assign a new temp color
+    const usedIndices = [
+      ...Object.values(keywordColors),
+      ...Object.values(tempKeywordColors),
+    ];
+    const nextIndex = getNextColorIndex(usedIndices);
+    setTempKeywordColors(prev => ({ ...prev, [kw]: nextIndex }));
+    return getColorByIndex(nextIndex);
+  }, [keywordColors, tempKeywordColors]);
 
   // Filter watchers to only those that support the selected probe type
   const availableWatchers = useMemo(() => {
@@ -142,11 +195,8 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, o
       }
     }
 
-    // Parse keywords
-    const keywordsList = keywords
-      .split(',')
-      .map((k) => k.trim())
-      .filter((k) => k.length > 0);
+    // Use selected keywords directly
+    const keywordsList = selectedKeywords;
 
     try {
       if (editingConfig) {
@@ -269,13 +319,63 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, o
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Group</label>
-                <input
-                  type="text"
-                  value={groupPath}
-                  onChange={(e) => setGroupPath(e.target.value)}
-                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., Backups/Photos"
-                />
+                {isCustomGroup ? (
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={groupPath}
+                      onChange={(e) => setGroupPath(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          if (groupPath) {
+                            setIsCustomGroup(false);
+                          }
+                        } else if (e.key === 'Escape') {
+                          setIsCustomGroup(false);
+                          setGroupPath('');
+                        }
+                      }}
+                      className="flex-1 px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                      placeholder="New group name"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsCustomGroup(false);
+                        setGroupPath('');
+                      }}
+                      className="px-3 py-2 text-gray-500 hover:text-gray-700 border rounded"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={!groupPath ? '__none__' : groupPath}
+                    onChange={(e) => {
+                      if (e.target.value === '__custom__') {
+                        setIsCustomGroup(true);
+                        setGroupPath('');
+                      } else if (e.target.value === '__none__') {
+                        setGroupPath('');
+                      } else {
+                        setGroupPath(e.target.value);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="__none__">No group</option>
+                    {existingGroups.map((group) => (
+                      <option key={group} value={group}>{group}</option>
+                    ))}
+                    {groupPath && !existingGroups.includes(groupPath) && (
+                      <option key={groupPath} value={groupPath}>{groupPath}</option>
+                    )}
+                    <option value="__custom__">+ Add new group...</option>
+                  </select>
+                )}
               </div>
 
               <div>
@@ -314,13 +414,67 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, o
 
               <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Keywords</label>
-                <input
-                  type="text"
-                  value={keywords}
-                  onChange={(e) => setKeywords(e.target.value)}
-                  className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
-                  placeholder="e.g., personal, critical, nas (comma-separated)"
-                />
+                <div className="space-y-2">
+                  {/* Selected keywords as removable tags */}
+                  {selectedKeywords.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {selectedKeywords.map(kw => {
+                        const color = getKeywordColor(kw);
+                        return (
+                          <span
+                            key={kw}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-sm ${color.bg} ${color.text}`}
+                          >
+                            {kw}
+                            <button
+                              type="button"
+                              onClick={() => setSelectedKeywords(prev => prev.filter(k => k !== kw))}
+                              className="opacity-60 hover:opacity-100"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* Available keywords to add */}
+                  {existingKeywords.filter(kw => !selectedKeywords.includes(kw)).length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {existingKeywords.filter(kw => !selectedKeywords.includes(kw)).map(kw => {
+                        const color = getKeywordColor(kw);
+                        return (
+                          <button
+                            key={kw}
+                            type="button"
+                            onClick={() => setSelectedKeywords(prev => [...prev, kw])}
+                            className={`px-2 py-1 rounded text-sm opacity-60 hover:opacity-100 ${color.bg} ${color.text}`}
+                          >
+                            + {kw}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* Input for new keyword */}
+                  <input
+                    type="text"
+                    value={newKeyword}
+                    onChange={(e) => setNewKeyword(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const kw = newKeyword.trim();
+                        if (kw && !selectedKeywords.includes(kw)) {
+                          setSelectedKeywords(prev => [...prev, kw]);
+                          setNewKeyword('');
+                        }
+                      }
+                    }}
+                    className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500 text-sm"
+                    placeholder="Add new keyword..."
+                  />
+                </div>
               </div>
             </div>
 
