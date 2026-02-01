@@ -77,8 +77,25 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
   const { data: watchers } = useQuery({
     queryKey: ['watchers'],
     queryFn: () => api.getWatchers(),
-    enabled: showForm,
+    refetchInterval: 30000,
   });
+
+  // Map watcher names to status colors
+  const watcherStatusColors = useMemo(() => {
+    const colors: Record<string, string> = {};
+    watchers?.forEach(w => {
+      if (!w.approved) {
+        colors[w.name] = 'text-orange-600';
+      } else if (w.paused) {
+        colors[w.name] = 'text-gray-400';
+      } else if (w.healthy) {
+        colors[w.name] = 'text-green-600';
+      } else {
+        colors[w.name] = 'text-red-600';
+      }
+    });
+    return colors;
+  }, [watchers]);
 
   const { data: keywordColors = {} } = useQuery({
     queryKey: ['keywordColors'],
@@ -406,6 +423,10 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
                         key={config.id}
                         config={config}
                         keywordColors={keywordColors}
+                        secondaryLabel={groupBy === 'watcher'
+                          ? (config.group_path ? { text: config.group_path } : undefined)
+                          : (config.watcher_name ? { text: config.watcher_name, color: watcherStatusColors[config.watcher_name] } : undefined)
+                        }
                         isRunning={runningProbes.has(config.id)}
                         onClick={() => onProbeClick(config)}
                         onEdit={() => { setEditingConfig(config); setShowForm(true); }}

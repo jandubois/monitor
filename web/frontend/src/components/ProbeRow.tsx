@@ -7,6 +7,7 @@ import { getColorByIndex } from '../utils/keywordColors';
 interface ProbeRowProps {
   config: ProbeConfig;
   keywordColors?: Record<string, number>;
+  secondaryLabel?: { text: string; color?: string };
   isRunning?: boolean;
   onClick?: () => void;
   onEdit?: () => void;
@@ -197,7 +198,7 @@ function TrashIcon() {
   );
 }
 
-export function ProbeRow({ config, keywordColors = {}, isRunning, onClick, onEdit, onRerun, onPauseToggle, onDelete, onKeywordClick }: ProbeRowProps) {
+export function ProbeRow({ config, keywordColors = {}, secondaryLabel, isRunning, onClick, onEdit, onRerun, onPauseToggle, onDelete, onKeywordClick }: ProbeRowProps) {
   const isPaused = !config.enabled;
   const [isExpanded, setIsExpanded] = useState(false);
   const summary = config.last_summary || config.last_message?.split('\n')[0] || '';
@@ -238,6 +239,12 @@ export function ProbeRow({ config, keywordColors = {}, isRunning, onClick, onEdi
           })}
         </div>
         <div className="text-xs text-gray-400 flex-shrink-0 ml-2">
+          {secondaryLabel && (
+            <>
+              <span className={secondaryLabel.color || 'text-gray-400'}>{secondaryLabel.text}</span>
+              {' · '}
+            </>
+          )}
           {formatRelativeTime(config.last_executed_at)}
           {!isPaused && config.next_run_at && (
             <span className={`ml-1 ${probeIsOverdue ? 'text-orange-600' : ''}`}>
