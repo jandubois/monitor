@@ -72,14 +72,19 @@ export function WatchersGroup() {
 
   const pauseWatcherMutation = useMutation({
     mutationFn: ({ id, paused }: { id: number; paused: boolean }) => api.setWatcherPaused(id, paused),
-    onSuccess: (_data, { paused }) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watchers'] });
       queryClient.invalidateQueries({ queryKey: ['status'] });
-      if (!paused) {
-        // Approval auto-acknowledges token_changed events, so refresh the events list
-        queryClient.invalidateQueries({ queryKey: ['watcherEvents'] });
-      }
-      // Trigger watcher-health probes to update status immediately
+      triggerWatcherHealthProbes();
+    },
+  });
+
+  const approveWatcherMutation = useMutation({
+    mutationFn: (id: number) => api.approveWatcher(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['watchers'] });
+      queryClient.invalidateQueries({ queryKey: ['status'] });
+      queryClient.invalidateQueries({ queryKey: ['watcherEvents'] });
       triggerWatcherHealthProbes();
     },
   });
@@ -194,13 +199,23 @@ export function WatchersGroup() {
                   </span>
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => pauseWatcherMutation.mutate({ id: w.id, paused: !w.paused })}
-                    className={`text-sm px-2 py-1 rounded ${w.paused ? 'text-green-600 hover:text-green-800' : 'text-yellow-600 hover:text-yellow-800'}`}
-                    title={!w.approved ? 'Approve watcher' : (w.paused ? 'Resume notifications' : 'Pause notifications')}
-                  >
-                    {!w.approved ? 'Approve' : (w.paused ? 'Resume' : 'Pause')}
-                  </button>
+                  {!w.approved ? (
+                    <button
+                      onClick={() => approveWatcherMutation.mutate(w.id)}
+                      className="text-sm px-2 py-1 rounded text-green-600 hover:text-green-800"
+                      title="Approve watcher"
+                    >
+                      Approve
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => pauseWatcherMutation.mutate({ id: w.id, paused: !w.paused })}
+                      className={`text-sm px-2 py-1 rounded ${w.paused ? 'text-green-600 hover:text-green-800' : 'text-yellow-600 hover:text-yellow-800'}`}
+                      title={w.paused ? 'Resume notifications' : 'Pause notifications'}
+                    >
+                      {w.paused ? 'Resume' : 'Pause'}
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       if (confirm(`Delete watcher "${w.name}" and all its probe data?`)) {

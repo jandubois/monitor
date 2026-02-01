@@ -365,27 +365,51 @@ func (s *Server) handleSetWatcherPaused(w http.ResponseWriter, r *http.Request) 
 	id, _ := strconv.Atoi(r.PathValue("id"))
 
 	var req struct {
-		Paused bool `json:"paused"`
+		Paused  *bool `json:"paused"`
+		Approve bool  `json:"approve"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	pausedInt := 0
-	if req.Paused {
-		pausedInt = 1
-	}
-
-	// When unpausing, also approve the watcher
 	var result interface{ RowsAffected() (int64, error) }
 	var err error
-	if req.Paused {
-		result, err = s.db.DB().ExecContext(ctx, `UPDATE watchers SET paused = ? WHERE id = ?`, pausedInt, id)
-	} else {
-		// Unpause and approve
-		result, err = s.db.DB().ExecContext(ctx, `UPDATE watchers SET paused = ?, approved = 1 WHERE id = ?`, pausedInt, id)
+	approved := false
 
+	if req.Approve {
+		// Approve without changing paused state
+		result, err = s.db.DB().ExecContext(ctx, `UPDATE watchers SET approved = 1 WHERE id = ?`, id)
+		approved = true
+	} else if req.Paused != nil {
+		pausedInt := 0
+		if *req.Paused {
+			pausedInt = 1
+		}
+		if *req.Paused {
+			result, err = s.db.DB().ExecContext(ctx, `UPDATE watchers SET paused = ? WHERE id = ?`, pausedInt, id)
+		} else {
+			// Unpause and approve
+			result, err = s.db.DB().ExecContext(ctx, `UPDATE watchers SET paused = ?, approved = 1 WHERE id = ?`, pausedInt, id)
+			approved = true
+		}
+	} else {
+		http.Error(w, "must specify paused or approve", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "watcher not found", http.StatusNotFound)
+		return
+	}
+
+	if approved {
 		// Ping the watcher's health endpoint to verify it's alive and update last_seen_at
 		var callbackURL *string
 		_ = s.db.DB().QueryRowContext(ctx, `SELECT callback_url FROM watchers WHERE id = ?`, id).Scan(&callbackURL)
@@ -398,30 +422,20 @@ func (s *Server) handleSetWatcherPaused(w http.ResponseWriter, r *http.Request) 
 				}
 			}
 		}
-	}
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
 
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
-		http.Error(w, "watcher not found", http.StatusNotFound)
-		return
-	}
-
-	if req.Paused {
-		slog.Info("watcher paused", "id", id)
-	} else {
-		slog.Info("watcher approved and unpaused", "id", id)
+		slog.Info("watcher approved", "id", id)
 		// Auto-acknowledge token_changed events since approval implies acknowledgment
 		_, _ = s.db.DB().ExecContext(ctx, `
 			UPDATE watcher_events SET acknowledged = 1
 			WHERE watcher_id = ? AND event_type = 'token_changed' AND acknowledged = 0
 		`, id)
+	} else if req.Paused != nil && *req.Paused {
+		slog.Info("watcher paused", "id", id)
+	} else {
+		slog.Info("watcher unpaused", "id", id)
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]bool{"paused": req.Paused})
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleListProbeConfigs(w http.ResponseWriter, r *http.Request) {

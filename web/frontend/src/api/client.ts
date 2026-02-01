@@ -91,6 +91,13 @@ class ApiClient {
     });
   }
 
+  async approveWatcher(id: number): Promise<void> {
+    return this.request(`/watchers/${id}/paused`, {
+      method: 'PUT',
+      body: JSON.stringify({ approve: true }),
+    });
+  }
+
   async getWatcherEvents(watcherId: number): Promise<WatcherEvent[]> {
     return this.request(`/watchers/${watcherId}/events`);
   }

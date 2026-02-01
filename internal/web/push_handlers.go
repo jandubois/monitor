@@ -109,10 +109,10 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 	).Scan(&watcherID, &existingToken, &existingVersion, &approved)
 
 	if err != nil {
-		// Insert new watcher (paused=1, approved=0)
+		// Insert new watcher (unapproved, not paused - approval is a separate concept from pausing)
 		result, err := s.db.DB().ExecContext(ctx, `
 			INSERT INTO watchers (name, version, token, callback_url, last_seen_at, registered_at, paused, approved)
-			VALUES (?, ?, ?, ?, ?, ?, 1, 0)
+			VALUES (?, ?, ?, ?, ?, ?, 0, 0)
 		`, req.Name, req.Version, req.Token, req.CallbackURL, now, now)
 		if err != nil {
 			slog.Error("failed to register watcher", "name", req.Name, "error", err)
@@ -129,9 +129,9 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 		tokenChanged := existingToken != nil && *existingToken != req.Token
 
 		if tokenChanged {
-			// Token changed - update token and require re-approval
+			// Token changed - update token and require re-approval (keep paused state unchanged)
 			_, err = s.db.DB().ExecContext(ctx, `
-				UPDATE watchers SET version = ?, token = ?, callback_url = ?, last_seen_at = ?, paused = 1, approved = 0
+				UPDATE watchers SET version = ?, token = ?, callback_url = ?, last_seen_at = ?, approved = 0
 				WHERE id = ?
 			`, req.Version, req.Token, req.CallbackURL, now, watcherID)
 			approved = 0
