@@ -227,28 +227,33 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
         <h1 className="text-2xl font-bold text-gray-900">
           Monitor Dashboard{status?.server_name ? ` on ${status.server_name}` : ''}
         </h1>
-        <div className="flex items-center gap-4">
-          {recentFailures && recentFailures.length > 0 ? (
-            <button
-              onClick={onFailuresClick}
-              className="flex items-center gap-2 px-3 py-2 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
-            >
-              <span className="w-2 h-2 rounded-full bg-red-500" />
-              <span className="font-medium">{recentFailures.length} failure{recentFailures.length > 1 ? 's' : ''}</span>
-            </button>
-          ) : (
-            <span className="text-green-600 text-sm">No failures</span>
-          )}
-          <span className="text-gray-300">|</span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onFailuresClick}
+            className={`flex items-center gap-2 px-3 py-2 rounded border ${
+              recentFailures && recentFailures.length > 0
+                ? 'border-red-200 bg-red-50 text-red-600 hover:bg-red-100'
+                : 'border-green-200 bg-green-50 text-green-600 hover:bg-green-100'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${
+              recentFailures && recentFailures.length > 0 ? 'bg-red-500' : 'bg-green-500'
+            }`} />
+            <span className="font-medium">
+              {recentFailures && recentFailures.length > 0
+                ? `${recentFailures.length} failure${recentFailures.length > 1 ? 's' : ''}`
+                : 'No failures'}
+            </span>
+          </button>
           <button
             onClick={() => setShowManageModal('groups')}
-            className="text-gray-500 hover:text-gray-700 text-sm"
+            className="px-3 py-2 rounded border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"
           >
             Groups
           </button>
           <button
             onClick={() => setShowManageModal('keywords')}
-            className="text-gray-500 hover:text-gray-700 text-sm"
+            className="px-3 py-2 rounded border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100"
           >
             Keywords
           </button>
