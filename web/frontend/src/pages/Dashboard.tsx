@@ -18,6 +18,7 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingConfig, setEditingConfig] = useState<ProbeConfig | null>(null);
   const [keywordFilter, setKeywordFilter] = useState('');
+  const [focusedGroup, setFocusedGroup] = useState<string | null>(null);
   const [showManageModal, setShowManageModal] = useState<'groups' | 'keywords' | null>(null);
   const [runningProbes, setRunningProbes] = useState<Set<number>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
@@ -219,7 +220,8 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
     return acc;
   }, {} as Record<string, ProbeConfig[]>);
 
-  const groups = groupedConfigs ? Object.keys(groupedConfigs).sort() : [];
+  const allGroups = groupedConfigs ? Object.keys(groupedConfigs).sort() : [];
+  const groups = focusedGroup && allGroups.includes(focusedGroup) ? [focusedGroup] : allGroups;
 
   return (
     <div className="p-6">
@@ -302,37 +304,52 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
             );
             return (
               <div key={group} className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
-                <button
-                  onClick={() => toggleGroup(group)}
-                  className="w-full px-4 py-3 flex items-center gap-3 bg-gray-200 hover:bg-gray-300 transition-colors"
-                >
-                  <svg
-                    className={`w-5 h-5 text-gray-500 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                <div className="group flex items-center bg-gray-200 hover:bg-gray-300 transition-colors">
+                  <button
+                    onClick={() => toggleGroup(group)}
+                    className="flex-1 px-4 py-3 flex items-center gap-3"
                   >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                  <h2 className="text-lg font-semibold text-gray-700">{group}</h2>
-                  <div className="flex gap-2 text-xs">
-                    {statusCounts.ok > 0 && (
-                      <span className="text-green-600">{statusCounts.ok} ok</span>
-                    )}
-                    {statusCounts.warning > 0 && (
-                      <span className="text-yellow-600">{statusCounts.warning} warning</span>
-                    )}
-                    {statusCounts.critical > 0 && (
-                      <span className="text-red-600">{statusCounts.critical} critical</span>
-                    )}
-                    {statusCounts.unknown > 0 && (
-                      <span className="text-gray-500">{statusCounts.unknown} unknown</span>
-                    )}
-                    {pausedCount > 0 && (
-                      <span className="text-gray-400">{pausedCount} paused</span>
-                    )}
-                  </div>
-                </button>
+                    <svg
+                      className={`w-5 h-5 text-gray-500 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <h2 className="text-lg font-semibold text-gray-700">{group}</h2>
+                    <div className="flex gap-2 text-xs">
+                      {statusCounts.ok > 0 && (
+                        <span className="text-green-600">{statusCounts.ok} ok</span>
+                      )}
+                      {statusCounts.warning > 0 && (
+                        <span className="text-yellow-600">{statusCounts.warning} warning</span>
+                      )}
+                      {statusCounts.critical > 0 && (
+                        <span className="text-red-600">{statusCounts.critical} critical</span>
+                      )}
+                      {statusCounts.unknown > 0 && (
+                        <span className="text-gray-500">{statusCounts.unknown} unknown</span>
+                      )}
+                      {pausedCount > 0 && (
+                        <span className="text-gray-400">{pausedCount} paused</span>
+                      )}
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => setFocusedGroup(focusedGroup === group ? null : group)}
+                    className={`px-3 py-3 transition-opacity ${focusedGroup === group ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    title={focusedGroup === group ? 'Exit focus mode' : 'Focus on this group'}
+                  >
+                    <svg className={`w-5 h-5 ${focusedGroup === group ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      {focusedGroup === group && (
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 20L20 4" />
+                      )}
+                    </svg>
+                  </button>
+                </div>
                 {!isCollapsed && (
                   <div className="divide-y divide-gray-300">
                     {groupedConfigs![group].map((config) => (
