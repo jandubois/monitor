@@ -23,7 +23,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Get all watchers and their health status
 	rows, err := s.db.DB().QueryContext(ctx, `
-		SELECT name, last_seen_at, version FROM watchers ORDER BY name
+		SELECT name, last_seen_at, version, paused, approved FROM watchers ORDER BY name
 	`)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -37,16 +37,19 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		var name string
 		var lastSeen db.NullTime
 		var version *string
-		if err := rows.Scan(&name, &lastSeen, &version); err != nil {
+		var paused, approved int
+		if err := rows.Scan(&name, &lastSeen, &version, &paused, &approved); err != nil {
 			continue
 		}
 		healthy := lastSeen.Valid && time.Since(lastSeen.Time) < 30*time.Second
-		if !healthy {
+		// Only count non-paused, approved watchers for allHealthy
+		if approved != 0 && paused == 0 && !healthy {
 			allHealthy = false
 		}
 		watcher := map[string]any{
 			"name":    name,
 			"healthy": healthy,
+			"paused":  paused != 0,
 		}
 		if lastSeen.Valid {
 			watcher["last_seen"] = lastSeen.Time

@@ -131,16 +131,27 @@ export function WatchersGroup() {
               {totalUnacknowledged} event{totalUnacknowledged > 1 ? 's' : ''} to acknowledge
             </span>
           )}
-          {!hasActionsRequired && (
-            <span className="text-green-600">{watchers.length} healthy</span>
-          )}
+          {(() => {
+            const healthyCount = watchers.filter(w => w.approved && w.healthy && !w.paused).length;
+            const pausedCount = watchers.filter(w => w.approved && w.paused).length;
+            return (
+              <>
+                {healthyCount > 0 && (
+                  <span className="text-green-600">{healthyCount} healthy</span>
+                )}
+                {pausedCount > 0 && (
+                  <span className="text-gray-400">{pausedCount} paused</span>
+                )}
+              </>
+            );
+          })()}
         </div>
       </button>
 
       {!isCollapsed && (
         <div className="divide-y divide-gray-300">
           {watchers.map((w) => (
-            <div key={w.id} className="bg-white">
+            <div key={w.id} className={`bg-white ${w.paused ? 'opacity-50' : ''}`}>
               <div className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <button
@@ -169,7 +180,7 @@ export function WatchersGroup() {
                     </span>
                   )}
                   {w.approved && w.paused && (
-                    <span className="text-xs px-2 py-0.5 rounded bg-yellow-100 text-yellow-700">
+                    <span className="text-xs px-2 py-0.5 rounded bg-gray-200 text-gray-500">
                       paused
                     </span>
                   )}

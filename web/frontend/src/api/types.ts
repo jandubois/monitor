@@ -110,6 +110,7 @@ export interface NotificationChannel {
 export interface WatcherStatus {
   name: string;
   healthy: boolean;
+  paused: boolean;
   last_seen?: string;
   version?: string;
 }

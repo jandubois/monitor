@@ -261,9 +261,11 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
                   <span
                     key={w.name}
                     className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                      w.healthy
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
+                      w.paused
+                        ? 'bg-gray-200 text-gray-500'
+                        : w.healthy
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-red-100 text-red-800'
                     }`}
                     title={w.version ? `v${w.version}` : undefined}
                   >
@@ -366,8 +368,10 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
           {groups.map((group) => {
             const isCollapsed = collapsedGroups.has(group);
             const groupProbes = groupedConfigs![group];
+            const pausedCount = groupProbes.filter(c => !c.enabled).length;
             const statusCounts = groupProbes.reduce(
               (acc, c) => {
+                if (!c.enabled) return acc; // Don't count paused probes in status
                 const status = c.last_status || 'unknown';
                 acc[status] = (acc[status] || 0) + 1;
                 return acc;
@@ -394,13 +398,16 @@ export function Dashboard({ onProbeClick, onFailuresClick }: DashboardProps) {
                       <span className="text-green-600">{statusCounts.ok} ok</span>
                     )}
                     {statusCounts.warning > 0 && (
-                      <span className="text-yellow-600">{statusCounts.warning} warn</span>
+                      <span className="text-yellow-600">{statusCounts.warning} warning</span>
                     )}
                     {statusCounts.critical > 0 && (
-                      <span className="text-red-600">{statusCounts.critical} crit</span>
+                      <span className="text-red-600">{statusCounts.critical} critical</span>
                     )}
                     {statusCounts.unknown > 0 && (
                       <span className="text-gray-500">{statusCounts.unknown} unknown</span>
+                    )}
+                    {pausedCount > 0 && (
+                      <span className="text-gray-400">{pausedCount} paused</span>
                     )}
                   </div>
                 </button>
