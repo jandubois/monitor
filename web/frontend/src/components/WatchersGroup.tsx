@@ -125,7 +125,7 @@ export function WatchersGroup() {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
         <h2 className="text-lg font-semibold text-gray-700">Watchers</h2>
-        <div className="flex gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs">
           {pendingApprovals > 0 && (
             <span className="px-2 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">
               {pendingApprovals} pending approval
@@ -138,14 +138,14 @@ export function WatchersGroup() {
           )}
           {(() => {
             const healthyCount = watchers.filter(w => w.approved && w.healthy && !w.paused).length;
-            const pausedCount = watchers.filter(w => w.approved && w.paused).length;
+            const pausedCount = watchers.filter(w => w.paused).length;
             return (
               <>
                 {healthyCount > 0 && (
-                  <span className="text-green-600">{healthyCount} healthy</span>
+                  <span className="px-2 py-0.5 text-green-600">{healthyCount} healthy</span>
                 )}
                 {pausedCount > 0 && (
-                  <span className="text-gray-400">{pausedCount} paused</span>
+                  <span className="px-2 py-0.5 text-gray-400">{pausedCount} paused</span>
                 )}
               </>
             );
