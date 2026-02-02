@@ -91,6 +91,7 @@ export function WatchersGroup() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['watchers'] });
       queryClient.invalidateQueries({ queryKey: ['probeConfigs'] });
+      queryClient.invalidateQueries({ queryKey: ['watcherEvents'] });
     },
   });
 
