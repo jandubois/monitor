@@ -99,7 +99,7 @@ func printDescription() {
 		Name:            "git-status",
 		Description:     "Check git repositories for uncommitted changes and unpushed commits",
 		Version:         "1.0.0",
-		DefaultName:     "Git: {{path}}",
+		DefaultName:     "Git: {{Path}}",
 		DefaultInterval: "15m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{

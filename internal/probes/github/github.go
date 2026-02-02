@@ -49,7 +49,7 @@ func GetDescription() probe.Description {
 		Description:     "Check GitHub repository commit activity",
 		Version:         "1.0.0",
 		Subcommand:      Name,
-		DefaultName:     "GitHub: {{repo}}",
+		DefaultName:     "GitHub: {{Repo}}",
 		DefaultInterval: "1h",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{

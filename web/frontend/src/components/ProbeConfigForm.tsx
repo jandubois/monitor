@@ -7,9 +7,10 @@ import type { ProbeConfig, Watcher, ProbeType } from '../api/types';
 
 // Expand a template string with the given context
 // Supports {{key}} syntax for both probe arguments and builtins (Watcher, ProbeName, ProbeType)
+// Keys can contain spaces to match display names (e.g., {{Min Free GB}})
 // Empty values leave the placeholder unexpanded so users see what's missing
 function expandTemplate(template: string, args: Record<string, string>, watcher?: Watcher, probeType?: ProbeType): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+  return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
     // Builtins use PascalCase
     if (key === 'Watcher') return watcher?.name || match;
     if (key === 'ProbeName') return probeType?.name || match;

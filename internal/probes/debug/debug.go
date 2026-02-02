@@ -17,7 +17,7 @@ func GetDescription() probe.Description {
 		Description:     "Debug probe for testing failure modes",
 		Version:         "1.0.0",
 		Subcommand:      Name,
-		DefaultName:     "Debug ({{mode}})",
+		DefaultName:     "Debug ({{Mode}})",
 		DefaultInterval: "1m",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{},

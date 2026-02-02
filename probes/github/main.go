@@ -242,7 +242,7 @@ func printDescription() {
 		Name:            "github",
 		Description:     "Check GitHub repository commit activity",
 		Version:         "1.0.0",
-		DefaultName:     "GitHub: {{repo}}",
+		DefaultName:     "GitHub: {{Repo}}",
 		DefaultInterval: "1h",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{

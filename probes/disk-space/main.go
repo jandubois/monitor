@@ -78,7 +78,7 @@ func printDescription() {
 		Name:            "disk-space",
 		Description:     "Check available disk space on a path",
 		Version:         "1.0.0",
-		DefaultName:     "Disk: {{path}} on {{Watcher}}",
+		DefaultName:     "Disk: {{Path}} on {{Watcher}}",
 		DefaultInterval: "1h",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{

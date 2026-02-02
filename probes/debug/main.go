@@ -113,7 +113,7 @@ func printDescription() {
 		Name:            "debug",
 		Description:     "Debug probe for testing failure modes",
 		Version:         "1.0.0",
-		DefaultName:     "Debug ({{mode}})",
+		DefaultName:     "Debug ({{Mode}})",
 		DefaultInterval: "1m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{},
