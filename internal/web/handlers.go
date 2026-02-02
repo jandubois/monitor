@@ -118,7 +118,7 @@ func (s *Server) handleListProbeTypes(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var probeTypes []map[string]any
 	for rows.Next() {

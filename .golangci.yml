@@ -11,3 +11,9 @@ linters:
         - (*database/sql.Rows).Close
         - (io.ReadCloser).Close
         - (*net/http.Response).Body.Close
+        - (*github.com/jandubois/monitor/internal/db.DB).Close
+        - (*net/http.Server).Shutdown
+        # Write errors to ResponseWriter are handled by the http package
+        - (net/http.ResponseWriter).Write
+        # Sscanf return values are intentionally ignored for lenient parsing
+        - fmt.Sscanf

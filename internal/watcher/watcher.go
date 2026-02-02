@@ -2,8 +2,11 @@ package watcher
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -41,6 +44,22 @@ func New(cfg *config.WatcherConfig) (*Watcher, error) {
 
 // Run starts the watcher service.
 func (w *Watcher) Run(ctx context.Context) error {
+	// Start API server first (needed for callback URL verification during registration)
+	addr := fmt.Sprintf(":%d", w.config.APIPort)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("failed to start API server: %w", err)
+	}
+	slog.Info("watcher API listening", "addr", addr)
+
+	server := w.createAPIServer()
+	serverErr := make(chan error, 1)
+	go func() {
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
+	}()
+
 	// Discover probes
 	probeTypes, err := w.discovery.DiscoverAll(ctx)
 	if err != nil {
@@ -86,17 +105,6 @@ func (w *Watcher) Run(ctx context.Context) error {
 	// Start scheduler
 	go w.scheduler.Run(ctx)
 
-	// Start API server (minimal, for debugging)
-	server := w.createAPIServer()
-	serverErr := make(chan error, 1)
-	go func() {
-		addr := fmt.Sprintf(":%d", w.config.APIPort)
-		slog.Info("watcher API listening", "addr", addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			serverErr <- err
-		}
-	}()
-
 	select {
 	case <-ctx.Done():
 		slog.Info("shutting down watcher")
@@ -138,10 +146,14 @@ func (w *Watcher) sendHeartbeat(ctx context.Context) {
 func (w *Watcher) createAPIServer() *http.Server {
 	mux := http.NewServeMux()
 
-	// Health endpoint is public
+	// Health endpoint is public (includes token hash for callback URL verification)
 	mux.HandleFunc("GET /health", func(rw http.ResponseWriter, r *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
 		rw.WriteHeader(http.StatusOK)
-		_, _ = rw.Write([]byte(`{"status":"ok"}`))
+		hash := sha256.Sum256([]byte(w.config.AuthToken))
+		tokenHash := hex.EncodeToString(hash[:])
+		resp := fmt.Sprintf(`{"status":"ok","name":%q,"token_hash":%q}`, w.config.Name, tokenHash)
+		_, _ = rw.Write([]byte(resp))
 	})
 
 	// Protected endpoints require authentication

@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -223,6 +225,15 @@ func runMetaWatcher(cmd *cobra.Command, args []string) error {
 func (mw *metaWatcher) runAPIServer(ctx context.Context) {
 	mux := http.NewServeMux()
 
+	// Health endpoint (includes token hash for callback URL verification)
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		hash := sha256.Sum256([]byte(mw.token))
+		tokenHash := hex.EncodeToString(hash[:])
+		resp := fmt.Sprintf(`{"status":"ok","name":"meta-watcher","token_hash":%q}`, tokenHash)
+		_, _ = w.Write([]byte(resp))
+	})
+
 	// Trigger endpoint
 	mux.HandleFunc("POST /trigger/{id}", func(w http.ResponseWriter, r *http.Request) {
 		// Verify auth token
@@ -234,7 +245,7 @@ func (mw *metaWatcher) runAPIServer(ctx context.Context) {
 
 		idStr := r.PathValue("id")
 		id := 0
-		fmt.Sscanf(idStr, "%d", &id)
+		_, _ = fmt.Sscanf(idStr, "%d", &id)
 
 		// Send trigger (non-blocking)
 		select {
@@ -244,7 +255,7 @@ func (mw *metaWatcher) runAPIServer(ctx context.Context) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"triggered"}`))
+		_, _ = w.Write([]byte(`{"status":"triggered"}`))
 	})
 
 	server := &http.Server{
@@ -258,7 +269,7 @@ func (mw *metaWatcher) runAPIServer(ctx context.Context) {
 		<-ctx.Done()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		server.Shutdown(shutdownCtx)
+		_ = server.Shutdown(shutdownCtx)
 	}()
 
 	if err := server.ListenAndServe(); err != http.ErrServerClosed {
@@ -374,11 +385,14 @@ func (mw *metaWatcher) check(ctx context.Context) error {
 		status, summary, message := mw.evaluateWatcher(w, watcherEvents)
 
 		// Log the check result
-		logLevel := slog.LevelInfo
-		if status == "critical" {
+		var logLevel slog.Level
+		switch status {
+		case "critical":
 			logLevel = slog.LevelError
-		} else if status == "warning" {
+		case "warning":
 			logLevel = slog.LevelWarn
+		default:
+			logLevel = slog.LevelInfo
 		}
 		slog.Log(ctx, logLevel, "watcher status",
 			"watcher", w.Name,

@@ -2,6 +2,8 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -94,6 +96,15 @@ func (s *Server) handlePushRegister(w http.ResponseWriter, r *http.Request) {
 	if req.Token == "" {
 		http.Error(w, "token is required", http.StatusBadRequest)
 		return
+	}
+
+	// Verify callback URL points to this watcher
+	if req.CallbackURL != "" {
+		if err := s.verifyCallbackURL(ctx, req.CallbackURL, req.Token); err != nil {
+			slog.Warn("callback URL verification failed", "name", req.Name, "callback_url", req.CallbackURL, "error", err)
+			http.Error(w, fmt.Sprintf("callback URL verification failed: %v", err), http.StatusBadRequest)
+			return
+		}
 	}
 
 	now := time.Now().UTC().Format(db.SQLiteTimeFormat)
@@ -628,6 +639,43 @@ func parseInterval(s string) (time.Duration, error) {
 	default:
 		return time.ParseDuration(s)
 	}
+}
+
+// verifyCallbackURL checks that the callback URL points to a watcher with the expected token.
+func (s *Server) verifyCallbackURL(ctx context.Context, callbackURL, expectedToken string) error {
+	healthURL := callbackURL + "/health"
+	req, err := http.NewRequestWithContext(ctx, "GET", healthURL, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("reach callback URL: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("callback URL returned status %d", resp.StatusCode)
+	}
+
+	var health struct {
+		Status    string `json:"status"`
+		Name      string `json:"name"`
+		TokenHash string `json:"token_hash"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&health); err != nil {
+		return fmt.Errorf("parse health response: %w", err)
+	}
+
+	expectedHash := sha256.Sum256([]byte(expectedToken))
+	expectedHashStr := hex.EncodeToString(expectedHash[:])
+	if health.TokenHash != expectedHashStr {
+		return fmt.Errorf("token mismatch: callback URL belongs to a different watcher")
+	}
+
+	return nil
 }
 
 // compareVersions compares two semantic version strings.
