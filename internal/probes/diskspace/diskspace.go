@@ -23,18 +23,18 @@ func GetDescription() probe.Description {
 		DefaultInterval: "1h",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{
-				"path": {
+				"Path": {
 					Type:        "string",
 					Description: "Path to check",
 				},
 			},
 			Optional: map[string]probe.ArgumentSpec{
-				"min_free_gb": {
+				"Min Free GB": {
 					Type:        "number",
 					Description: "Minimum free gigabytes",
 					Default:     float64(10),
 				},
-				"min_free_percent": {
+				"Min Free Percent": {
 					Type:        "number",
 					Description: "Minimum free percentage (0-100)",
 					Default:     float64(0),

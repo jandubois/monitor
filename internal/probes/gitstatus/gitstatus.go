@@ -44,23 +44,23 @@ func GetDescription() probe.Description {
 		DefaultInterval: "15m",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{
-				"path": {
+				"Path": {
 					Type:        "string",
 					Description: "Directory to scan for git repositories",
 				},
 			},
 			Optional: map[string]probe.ArgumentSpec{
-				"uncommitted_hours": {
+				"Uncommitted Hours": {
 					Type:        "number",
 					Description: "Hours after which uncommitted changes are a failure",
 					Default:     float64(1),
 				},
-				"unpushed_hours": {
+				"Unpushed Hours": {
 					Type:        "number",
 					Description: "Hours after which unpushed commits are a failure",
 					Default:     float64(4),
 				},
-				"exclude_ai_files": {
+				"Exclude AI Files": {
 					Type:        "boolean",
 					Description: "Exclude AI agent files (CLAUDE.md, .claude/, etc.) from uncommitted changes check",
 					Default:     false,

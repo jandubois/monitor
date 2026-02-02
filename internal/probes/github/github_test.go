@@ -117,12 +117,12 @@ func TestGetDescription(t *testing.T) {
 	}
 
 	// Check required arguments
-	if _, ok := desc.Arguments.Required["repo"]; !ok {
-		t.Error("expected 'repo' in required arguments")
+	if _, ok := desc.Arguments.Required["Repo"]; !ok {
+		t.Error("expected 'Repo' in required arguments")
 	}
 
 	// Check optional arguments
-	expectedOptional := []string{"branch", "max_age_hours", "min_files", "min_additions"}
+	expectedOptional := []string{"Branch", "Max Age Hours", "Min Files", "Min Additions"}
 	for _, arg := range expectedOptional {
 		if _, ok := desc.Arguments.Optional[arg]; !ok {
 			t.Errorf("expected %q in optional arguments", arg)

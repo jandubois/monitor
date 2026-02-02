@@ -106,15 +106,15 @@ func TestGetDescription(t *testing.T) {
 	}
 
 	// Check required arguments
-	if _, ok := desc.Arguments.Required["path"]; !ok {
-		t.Error("expected 'path' in required arguments")
+	if _, ok := desc.Arguments.Required["Path"]; !ok {
+		t.Error("expected 'Path' in required arguments")
 	}
 
 	// Check optional arguments
-	if _, ok := desc.Arguments.Optional["min_free_gb"]; !ok {
-		t.Error("expected 'min_free_gb' in optional arguments")
+	if _, ok := desc.Arguments.Optional["Min Free GB"]; !ok {
+		t.Error("expected 'Min Free GB' in optional arguments")
 	}
-	if _, ok := desc.Arguments.Optional["min_free_percent"]; !ok {
-		t.Error("expected 'min_free_percent' in optional arguments")
+	if _, ok := desc.Arguments.Optional["Min Free Percent"]; !ok {
+		t.Error("expected 'Min Free Percent' in optional arguments")
 	}
 }

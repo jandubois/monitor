@@ -1,5 +1,7 @@
 package probe
 
+import "strings"
+
 // Status represents the outcome of a probe execution.
 type Status string
 
@@ -66,3 +68,16 @@ type DataSpec struct {
 	Type        string `json:"type"`                  // "string", "number", "boolean", "array", "object"
 	Description string `json:"description,omitempty"` // Human-readable label
 }
+
+// ToJSONKey converts a display name to a JSON key.
+// "Exclude AI Files" → "exclude_ai_files"
+func ToJSONKey(displayName string) string {
+	return strings.ToLower(strings.ReplaceAll(displayName, " ", "_"))
+}
+
+// ToCLIFlag converts a display name to a CLI flag name (without --).
+// "Exclude AI Files" → "exclude-ai-files"
+func ToCLIFlag(displayName string) string {
+	return strings.ToLower(strings.ReplaceAll(displayName, " ", "-"))
+}
+

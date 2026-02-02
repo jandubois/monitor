@@ -148,9 +148,9 @@ func (e *Executor) runProbe(ctx context.Context, cfg *ProbeConfig) (*probe.Resul
 func buildArgs(arguments map[string]any) []string {
 	var args []string
 	for key, value := range arguments {
-		// Convert underscores to dashes for CLI convention
-		// JSON schema uses underscores, CLI uses dashes
-		cliKey := strings.ReplaceAll(key, "_", "-")
+		// Convert to CLI flag: spaces/underscores to dashes, lowercase
+		// Supports both display names ("Exclude AI Files") and legacy snake_case ("exclude_ai_files")
+		cliKey := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, " ", "-"), "_", "-"))
 		args = append(args, fmt.Sprintf("--%s=%v", cliKey, value))
 	}
 	return args

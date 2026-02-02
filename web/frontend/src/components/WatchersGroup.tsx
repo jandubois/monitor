@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { WatcherEvent } from '../api/types';
@@ -30,14 +30,11 @@ export function WatchersGroup() {
   const totalUnacknowledged = unacknowledgedEvents?.length || 0;
   const hasActionsRequired = pendingApprovals > 0 || totalUnacknowledged > 0;
 
-  // Auto-expand when actions are required
-  const [isCollapsed, setIsCollapsed] = useState(!hasActionsRequired);
+  // Track user's explicit collapse preference; null means "use default behavior"
+  const [userCollapsed, setUserCollapsed] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    if (hasActionsRequired) {
-      setIsCollapsed(false);
-    }
-  }, [hasActionsRequired]);
+  // Effective collapsed state: user preference wins, otherwise expand if actions required
+  const isCollapsed = userCollapsed ?? !hasActionsRequired;
 
   // Fetch events for expanded watcher
   const { data: watcherEvents } = useQuery({
@@ -113,7 +110,7 @@ export function WatchersGroup() {
   return (
     <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
       <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
+        onClick={() => setUserCollapsed(!isCollapsed)}
         className="w-full px-4 py-3 flex items-center gap-3 bg-gray-200 hover:bg-gray-300 transition-colors"
       >
         <svg

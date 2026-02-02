@@ -118,17 +118,17 @@ func printDescription() {
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{},
 			Optional: map[string]ArgSpec{
-				"mode": {
+				"Mode": {
 					Type:        "string",
 					Description: "Probe behavior mode",
 					Default:     "ok",
 					Enum:        []string{"ok", "warning", "critical", "timeout", "crash", "error"},
 				},
-				"message": {
+				"Message": {
 					Type:        "string",
 					Description: "Custom message to return",
 				},
-				"delay_ms": {
+				"Delay MS": {
 					Type:        "number",
 					Description: "Delay before responding (milliseconds)",
 					Default:     0,

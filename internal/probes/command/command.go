@@ -26,28 +26,28 @@ func GetDescription() probe.Description {
 		DefaultInterval: "5m",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{
-				"command": {
+				"Command": {
 					Type:        "string",
 					Description: "Command to run",
 				},
 			},
 			Optional: map[string]probe.ArgumentSpec{
-				"shell": {
+				"Shell": {
 					Type:        "string",
 					Description: "Shell to use for execution",
 					Default:     "/bin/sh",
 				},
-				"ok_codes": {
+				"OK Codes": {
 					Type:        "string",
 					Description: "Comma-separated exit codes that indicate success",
 					Default:     "0",
 				},
-				"warning_codes": {
+				"Warning Codes": {
 					Type:        "string",
 					Description: "Comma-separated exit codes that indicate warning",
 					Default:     "",
 				},
-				"capture_output": {
+				"Capture Output": {
 					Type:        "boolean",
 					Description: "Include command output in result data",
 					Default:     true,

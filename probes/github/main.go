@@ -246,28 +246,28 @@ func printDescription() {
 		DefaultInterval: "1h",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{
-				"repo": {
+				"Repo": {
 					Type:        "string",
 					Description: "Repository (owner/name)",
 				},
 			},
 			Optional: map[string]ArgSpec{
-				"branch": {
+				"Branch": {
 					Type:        "string",
 					Description: "Branch name",
 					Default:     "main",
 				},
-				"max_age_hours": {
+				"Max Age Hours": {
 					Type:        "number",
 					Description: "Maximum commit age in hours (0 to disable)",
 					Default:     24,
 				},
-				"min_files": {
+				"Min Files": {
 					Type:        "number",
 					Description: "Minimum changed files (0 to disable)",
 					Default:     0,
 				},
-				"min_additions": {
+				"Min Additions": {
 					Type:        "number",
 					Description: "Minimum added lines (0 to disable)",
 					Default:     0,

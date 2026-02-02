@@ -21,12 +21,12 @@ if [[ "${1:-}" == "--describe" ]]; then
   "default_interval": "6h",
   "arguments": {
     "optional": {
-      "warn_days": {
+      "Warn Days": {
         "type": "number",
         "description": "Days after release to warn if not in update channel",
         "default": 4
       },
-      "critical_days": {
+      "Critical Days": {
         "type": "number",
         "description": "Days after release to go critical if not in update channel",
         "default": 7

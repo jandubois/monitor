@@ -53,28 +53,28 @@ func GetDescription() probe.Description {
 		DefaultInterval: "1h",
 		Arguments: probe.Arguments{
 			Required: map[string]probe.ArgumentSpec{
-				"repo": {
+				"Repo": {
 					Type:        "string",
 					Description: "Repository (owner/name)",
 				},
 			},
 			Optional: map[string]probe.ArgumentSpec{
-				"branch": {
+				"Branch": {
 					Type:        "string",
 					Description: "Branch name",
 					Default:     "main",
 				},
-				"max_age_hours": {
+				"Max Age Hours": {
 					Type:        "number",
 					Description: "Maximum commit age in hours (0 to disable)",
 					Default:     float64(24),
 				},
-				"min_files": {
+				"Min Files": {
 					Type:        "number",
 					Description: "Minimum changed files (0 to disable)",
 					Default:     float64(0),
 				},
-				"min_additions": {
+				"Min Additions": {
 					Type:        "number",
 					Description: "Minimum added lines (0 to disable)",
 					Default:     float64(0),

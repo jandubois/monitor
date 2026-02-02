@@ -103,23 +103,23 @@ func printDescription() {
 		DefaultInterval: "15m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{
-				"path": {
+				"Path": {
 					Type:        "string",
 					Description: "Directory to scan for git repositories",
 				},
 			},
 			Optional: map[string]ArgSpec{
-				"uncommitted_hours": {
+				"Uncommitted Hours": {
 					Type:        "number",
 					Description: "Hours after which uncommitted changes are a failure",
 					Default:     1,
 				},
-				"unpushed_hours": {
+				"Unpushed Hours": {
 					Type:        "number",
 					Description: "Hours after which unpushed commits are a failure",
 					Default:     4,
 				},
-				"exclude_ai_files": {
+				"Exclude AI Files": {
 					Type:        "boolean",
 					Description: "Exclude AI agent files (CLAUDE.md, .claude/, etc.) from uncommitted changes check",
 					Default:     false,

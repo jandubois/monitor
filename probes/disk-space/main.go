@@ -82,18 +82,18 @@ func printDescription() {
 		DefaultInterval: "1h",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{
-				"path": {
+				"Path": {
 					Type:        "string",
 					Description: "Path to check",
 				},
 			},
 			Optional: map[string]ArgSpec{
-				"min_free_gb": {
+				"Min Free GB": {
 					Type:        "number",
 					Description: "Minimum free gigabytes",
 					Default:     10,
 				},
-				"min_free_percent": {
+				"Min Free Percent": {
 					Type:        "number",
 					Description: "Minimum free percentage (0-100)",
 					Default:     0,

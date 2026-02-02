@@ -88,28 +88,28 @@ func printDescription() {
 		DefaultInterval: "5m",
 		Arguments: Arguments{
 			Required: map[string]ArgSpec{
-				"command": {
+				"Command": {
 					Type:        "string",
 					Description: "Command to run",
 				},
 			},
 			Optional: map[string]ArgSpec{
-				"shell": {
+				"Shell": {
 					Type:        "string",
 					Description: "Shell to use for execution",
 					Default:     "/bin/sh",
 				},
-				"ok_codes": {
+				"OK Codes": {
 					Type:        "string",
 					Description: "Comma-separated exit codes that indicate success",
 					Default:     "0",
 				},
-				"warning_codes": {
+				"Warning Codes": {
 					Type:        "string",
 					Description: "Comma-separated exit codes that indicate warning",
 					Default:     "",
 				},
-				"capture_output": {
+				"Capture Output": {
 					Type:        "boolean",
 					Description: "Include command output in result data",
 					Default:     true,

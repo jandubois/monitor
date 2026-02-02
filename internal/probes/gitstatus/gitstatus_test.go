@@ -94,18 +94,18 @@ func TestGetDescription(t *testing.T) {
 	}
 
 	// Check required arguments
-	if _, ok := desc.Arguments.Required["path"]; !ok {
-		t.Error("expected 'path' in required arguments")
+	if _, ok := desc.Arguments.Required["Path"]; !ok {
+		t.Error("expected 'Path' in required arguments")
 	}
 
 	// Check optional arguments
-	if _, ok := desc.Arguments.Optional["uncommitted_hours"]; !ok {
-		t.Error("expected 'uncommitted_hours' in optional arguments")
+	if _, ok := desc.Arguments.Optional["Uncommitted Hours"]; !ok {
+		t.Error("expected 'Uncommitted Hours' in optional arguments")
 	}
-	if _, ok := desc.Arguments.Optional["unpushed_hours"]; !ok {
-		t.Error("expected 'unpushed_hours' in optional arguments")
+	if _, ok := desc.Arguments.Optional["Unpushed Hours"]; !ok {
+		t.Error("expected 'Unpushed Hours' in optional arguments")
 	}
-	if _, ok := desc.Arguments.Optional["exclude_ai_files"]; !ok {
-		t.Error("expected 'exclude_ai_files' in optional arguments")
+	if _, ok := desc.Arguments.Optional["Exclude AI Files"]; !ok {
+		t.Error("expected 'Exclude AI Files' in optional arguments")
 	}
 }
