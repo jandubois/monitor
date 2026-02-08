@@ -212,7 +212,7 @@ func (s *Server) handleListWatchers(w http.ResponseWriter, r *http.Request) {
 		       (SELECT COUNT(*) FROM watcher_probe_types WHERE watcher_id = w.id) as probe_type_count,
 		       (SELECT COUNT(*) FROM probe_configs WHERE watcher_id = w.id) as config_count
 		FROM watchers w
-		ORDER BY w.name
+		ORDER BY (CASE WHEN w.name = 'meta-watcher' THEN 0 ELSE 1 END), w.name
 	`)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
