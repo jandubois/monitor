@@ -31,7 +31,7 @@ func New(cfg *config.WatcherConfig) (*Watcher, error) {
 	executor := NewExecutor(cfg.MaxConcurrent, cfg.ProbesDir)
 	executor.SetResultWriter(NewHTTPResultWriter(client, cfg.Name))
 	scheduler := NewScheduler(client, executor, cfg.Name)
-	discovery := NewDiscovery(cfg.ProbesDir)
+	discovery := NewDiscovery(cfg.ProbesDir, cfg.ExtraProbes)
 
 	return &Watcher{
 		config:    cfg,

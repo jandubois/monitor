@@ -93,49 +93,6 @@ Exit codes not in `ok_codes` or `warning_codes` produce `critical` status.
 
 ---
 
-## git-status
-
-**Default interval:** 15m
-
-Scan a directory for Git repositories with uncommitted changes or unpushed commits.
-
-**Use cases:**
-- Remind yourself to commit work-in-progress
-- Ensure changes are pushed before leaving a machine
-- Monitor developer workstations
-
-The probe recursively searches for `.git` directories and checks each repository's status.
-
-### Parameters
-
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `path` | Yes | — | Directory to scan for repositories |
-| `uncommitted_hours` | No | 1 | Hours before uncommitted changes trigger alert |
-| `unpushed_hours` | No | 4 | Hours before unpushed commits trigger alert |
-
-The probe returns `critical` if any repository exceeds these thresholds.
-
-### Example
-
-```json
-{
-  "path": "/Users/jan/git",
-  "uncommitted_hours": 2,
-  "unpushed_hours": 8
-}
-```
-
-### Metrics
-
-| Metric | Unit | Description |
-|--------|------|-------------|
-| `repos_checked` | count | Repositories scanned |
-| `repos_failed` | count | Repositories with issues |
-| `repos_warned` | count | Repositories with warnings |
-
----
-
 ## github
 
 **Default interval:** 1h

@@ -14,7 +14,6 @@ import (
 	"github.com/jandubois/monitor/internal/probes/debug"
 	"github.com/jandubois/monitor/internal/probes/diskspace"
 	"github.com/jandubois/monitor/internal/probes/github"
-	"github.com/jandubois/monitor/internal/probes/gitstatus"
 	"github.com/spf13/cobra"
 )
 
@@ -80,21 +79,6 @@ var githubCmd = &cobra.Command{
 	},
 }
 
-// git-status probe
-var gitStatusCmd = &cobra.Command{
-	Use:   gitstatus.Name,
-	Short: "Check git repositories for uncommitted changes and unpushed commits",
-	Run: func(cmd *cobra.Command, args []string) {
-		path, _ := cmd.Flags().GetString("path")
-		uncommittedHours, _ := cmd.Flags().GetFloat64("uncommitted-hours")
-		unpushedHours, _ := cmd.Flags().GetFloat64("unpushed-hours")
-		excludeAIFiles, _ := cmd.Flags().GetBool("exclude-ai-files")
-
-		result := gitstatus.Run(path, uncommittedHours, unpushedHours, excludeAIFiles)
-		outputResult(result)
-	},
-}
-
 func init() {
 	// Add flags to root
 	rootCmd.Flags().BoolP("version", "v", false, "Print version and exit")
@@ -118,12 +102,10 @@ func init() {
 	commandCmd.GroupID = probeGroupID
 	debugCmd.GroupID = probeGroupID
 	githubCmd.GroupID = probeGroupID
-	gitStatusCmd.GroupID = probeGroupID
 	rootCmd.AddCommand(diskSpaceCmd)
 	rootCmd.AddCommand(commandCmd)
 	rootCmd.AddCommand(debugCmd)
 	rootCmd.AddCommand(githubCmd)
-	rootCmd.AddCommand(gitStatusCmd)
 
 	// disk-space flags
 	diskSpaceCmd.Flags().String("path", "", "Path to check")
@@ -149,11 +131,6 @@ func init() {
 	githubCmd.Flags().Int("min-files", 0, "Minimum changed files (0 to disable)")
 	githubCmd.Flags().Int("min-additions", 0, "Minimum added lines (0 to disable)")
 
-	// git-status flags
-	gitStatusCmd.Flags().String("path", "", "Directory to scan for git repositories")
-	gitStatusCmd.Flags().Float64("uncommitted-hours", 1, "Hours after which uncommitted changes are a failure")
-	gitStatusCmd.Flags().Float64("unpushed-hours", 4, "Hours after which unpushed commits are a failure")
-	gitStatusCmd.Flags().Bool("exclude-ai-files", false, "Exclude AI agent files from uncommitted changes check")
 }
 
 func printDescriptions() {

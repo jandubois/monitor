@@ -4,8 +4,9 @@ import "time"
 
 // WatcherConfig holds configuration for the watcher service.
 type WatcherConfig struct {
-	Name          string // Unique watcher name (e.g., "nas", "macbook")
+	Name          string   // Unique watcher name (e.g., "nas", "macbook")
 	ProbesDir     string
+	ExtraProbes   []string // Additional probe executable paths
 	MaxConcurrent int
 	APIPort       int
 	PushURL       string // URL of web service push API

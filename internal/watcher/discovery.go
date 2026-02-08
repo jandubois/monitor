@@ -17,13 +17,15 @@ import (
 
 // Discovery scans for probes and describes them.
 type Discovery struct {
-	probesDir string
+	probesDir   string
+	extraProbes []string
 }
 
 // NewDiscovery creates a new probe discovery instance.
-func NewDiscovery(probesDir string) *Discovery {
+func NewDiscovery(probesDir string, extraProbes []string) *Discovery {
 	return &Discovery{
-		probesDir: probesDir,
+		probesDir:   probesDir,
+		extraProbes: extraProbes,
 	}
 }
 
@@ -95,6 +97,44 @@ func (d *Discovery) DiscoverAll(ctx context.Context) ([]RegisterProbeType, error
 			})
 
 			slog.Info("discovered probe", "name", desc.Name, "version", version, "subcommand", desc.Subcommand)
+		}
+	}
+
+	// Discover extra probes from explicit paths
+	for _, probePath := range d.extraProbes {
+		absPath, err := filepath.Abs(probePath)
+		if err != nil {
+			slog.Warn("failed to resolve extra probe path", "path", probePath, "error", err)
+			continue
+		}
+
+		descs, err := d.describeProbe(ctx, absPath)
+		if err != nil {
+			slog.Warn("failed to describe extra probe", "path", absPath, "error", err)
+			continue
+		}
+
+		for _, desc := range descs {
+			argsMap := descriptionArgsToMap(desc.Arguments)
+			outputMap := outputSchemaToMap(desc.Output)
+			version := desc.Version
+			if version == "" {
+				version = "0.0.0"
+			}
+
+			probeTypes = append(probeTypes, RegisterProbeType{
+				Name:            desc.Name,
+				Version:         version,
+				Description:     desc.Description,
+				Arguments:       argsMap,
+				Output:          outputMap,
+				DefaultName:     desc.DefaultName,
+				DefaultInterval: desc.DefaultInterval,
+				ExecutablePath:  absPath,
+				Subcommand:      desc.Subcommand,
+			})
+
+			slog.Info("discovered extra probe", "name", desc.Name, "version", version, "path", absPath)
 		}
 	}
 

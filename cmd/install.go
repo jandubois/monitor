@@ -32,7 +32,9 @@ var launchAgentPlist = `<?xml version="1.0" encoding="UTF-8"?>
         <string>--callback-url</string>
         <string>{{.CallbackURL}}</string>
         <string>--api-port</string>
-        <string>{{.APIPort}}</string>
+        <string>{{.APIPort}}</string>{{range .Probes}}
+        <string>--probe</string>
+        <string>{{.}}</string>{{end}}
     </array>
     <key>EnvironmentVariables</key>
     <dict>
@@ -60,6 +62,7 @@ type plistData struct {
 	APIPort     int
 	AuthToken   string
 	LogDir      string
+	Probes      []string
 }
 
 var installCmd = &cobra.Command{
@@ -89,6 +92,7 @@ func init() {
 	installCmd.Flags().Int("api-port", 8081, "Port for watcher API")
 	installCmd.Flags().String("callback-url", "", "Callback URL override (default: http://<hostname>:<api-port>)")
 	installCmd.Flags().String("auth-token", "", "Authentication token (or AUTH_TOKEN env var)")
+	installCmd.Flags().StringSlice("probe", nil, "Additional probe executable path (can be repeated)")
 }
 
 func runInstall(cmd *cobra.Command, args []string) error {
@@ -101,6 +105,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	apiPort, _ := cmd.Flags().GetInt("api-port")
 	callbackURL, _ := cmd.Flags().GetString("callback-url")
 	authToken, _ := cmd.Flags().GetString("auth-token")
+	probes, _ := cmd.Flags().GetStringSlice("probe")
 
 	// Default name to short hostname (without domain)
 	if name == "" {
@@ -164,6 +169,7 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		APIPort:     apiPort,
 		AuthToken:   authToken,
 		LogDir:      logDir,
+		Probes:      probes,
 	}
 
 	tmpl, err := template.New("plist").Parse(launchAgentPlist)

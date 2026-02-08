@@ -26,7 +26,7 @@ Personal infrastructure monitoring system with self-describing probes and multi-
               │                 │           │                  │
               │  Probes:        │           │  Probes:         │
               │  - disk-space   │           │  - disk-space    │
-              │  - rd-releases  │           │  - git-status    │
+              │  - rd-releases  │           │  - git-lint*     │
               │  - github       │           │  - github        │
               └────────┬────────┘           └────────┬─────────┘
                        │                             │
@@ -198,7 +198,7 @@ PROBE_PATH=/volume1 PROBE_MIN_FREE_GB=100 disk-space
 - `critical` — Immediate action required
 - `unknown` — Could not determine status
 
-**Available probes:** disk-space, command, git-status, github, rd-releases, debug
+**Available probes:** disk-space, command, github, rd-releases, debug
 
 ### Web Frontend
 

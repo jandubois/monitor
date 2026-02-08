@@ -31,6 +31,7 @@ func init() {
 	watcherCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
 	watcherCmd.Flags().String("callback-url", "", "URL where web service can reach this watcher (for triggers)")
 	watcherCmd.Flags().String("probes-dir", "./probes", "Directory containing probe executables")
+	watcherCmd.Flags().StringSlice("probe", nil, "Additional probe executable path (can be repeated)")
 	watcherCmd.Flags().Int("max-concurrent", 10, "Maximum concurrent probe executions")
 	watcherCmd.Flags().Int("api-port", 8081, "Port for local watcher API (health check, reload)")
 }
@@ -52,6 +53,7 @@ func runWatcher(cmd *cobra.Command, args []string) error {
 	pushURL, _ := cmd.Flags().GetString("push-url")
 	callbackURL, _ := cmd.Flags().GetString("callback-url")
 	probesDir, _ := cmd.Flags().GetString("probes-dir")
+	extraProbes, _ := cmd.Flags().GetStringSlice("probe")
 	maxConcurrent, _ := cmd.Flags().GetInt("max-concurrent")
 	apiPort, _ := cmd.Flags().GetInt("api-port")
 
@@ -71,6 +73,7 @@ func runWatcher(cmd *cobra.Command, args []string) error {
 	cfg := &config.WatcherConfig{
 		Name:          name,
 		ProbesDir:     probesDir,
+		ExtraProbes:   extraProbes,
 		MaxConcurrent: maxConcurrent,
 		APIPort:       apiPort,
 		PushURL:       pushURL,
