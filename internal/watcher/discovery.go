@@ -46,9 +46,8 @@ func (d *Discovery) DiscoverAll(ctx context.Context) ([]RegisterProbeType, error
 	entries, err := os.ReadDir(d.probesDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return probeTypes, fmt.Errorf("read probes directory: %w", err)
+			slog.Warn("failed to read probes directory", "path", d.probesDir, "error", err)
 		}
-		// probesDir missing is fine — continue to extra probes
 		entries = nil
 	}
 	for _, entry := range entries {
