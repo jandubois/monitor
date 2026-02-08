@@ -89,6 +89,7 @@ type probeConfig struct {
 	ProbeTypeName string         `json:"probe_type_name"`
 	WatcherID     *int           `json:"watcher_id"`
 	WatcherName   string         `json:"watcher_name"`
+	Enabled       bool           `json:"enabled"`
 	Arguments     map[string]any `json:"arguments"`
 }
 
@@ -416,10 +417,14 @@ func (mw *metaWatcher) check(ctx context.Context) error {
 		}
 	}
 
-	// Remove probe configs for watchers that no longer exist
+	// Disable and remove probe configs for watchers that no longer exist
 	for watcherID := range mw.probeConfigs {
 		if !currentIDs[watcherID] {
-			slog.Info("watcher removed, cleaning up", "watcher_id", watcherID)
+			configID := mw.probeConfigs[watcherID]
+			slog.Info("watcher removed, disabling probe config", "watcher_id", watcherID, "config_id", configID)
+			if err := mw.disableProbeConfig(ctx, configID); err != nil {
+				slog.Error("failed to disable probe config", "config_id", configID, "error", err)
+			}
 			delete(mw.probeConfigs, watcherID)
 		}
 	}
@@ -506,6 +511,9 @@ func (mw *metaWatcher) loadExistingConfigs(ctx context.Context) error {
 	}
 
 	for _, cfg := range configs {
+		if !cfg.Enabled {
+			continue
+		}
 		// Extract target watcher_id from arguments
 		if watcherID, ok := cfg.Arguments["watcher_id"].(float64); ok {
 			mw.probeConfigs[int(watcherID)] = cfg.ID
@@ -583,6 +591,38 @@ func (mw *metaWatcher) getJSON(ctx context.Context, path string, response any) e
 		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (mw *metaWatcher) disableProbeConfig(ctx context.Context, configID int) error {
+	path := fmt.Sprintf("/api/probe-configs/%d/enabled", configID)
+	return mw.putJSON(ctx, path, map[string]bool{"enabled": false})
+}
+
+func (mw *metaWatcher) putJSON(ctx context.Context, path string, body any) error {
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", mw.webURL+path, bytes.NewReader(bodyJSON))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+mw.token)
+
+	resp, err := mw.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	return nil

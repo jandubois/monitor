@@ -356,6 +356,19 @@ func (s *Server) handleDeleteWatcher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Disable probe configs that reference this watcher in their arguments
+	// (e.g. meta-watcher's "Monitor: <name>" configs where arguments.watcher_id
+	// points to the deleted watcher, but watcher_id column points to the meta-watcher)
+	disableResult, err := s.db.DB().ExecContext(ctx, `
+		UPDATE probe_configs SET enabled = 0, updated_at = datetime('now')
+		WHERE json_extract(arguments, '$.watcher_id') = ?
+	`, id)
+	if err != nil {
+		slog.Warn("failed to disable referencing probe configs", "watcher_id", id, "error", err)
+	} else if n, _ := disableResult.RowsAffected(); n > 0 {
+		slog.Info("disabled probe configs referencing deleted watcher", "watcher_id", id, "count", n)
+	}
+
 	slog.Info("watcher deleted", "id", id)
 	w.WriteHeader(http.StatusNoContent)
 }
