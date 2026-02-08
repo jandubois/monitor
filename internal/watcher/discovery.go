@@ -45,10 +45,11 @@ func (d *Discovery) DiscoverAll(ctx context.Context) ([]RegisterProbeType, error
 	// Then discover external probes from the probes directory
 	entries, err := os.ReadDir(d.probesDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return probeTypes, nil // No external probes, just return built-ins
+		if !os.IsNotExist(err) {
+			return probeTypes, fmt.Errorf("read probes directory: %w", err)
 		}
-		return probeTypes, fmt.Errorf("read probes directory: %w", err)
+		// probesDir missing is fine — continue to extra probes
+		entries = nil
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
