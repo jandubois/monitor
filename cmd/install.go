@@ -85,7 +85,10 @@ var installCmd = &cobra.Command{
 and runs continuously in the background.
 
 The service will be installed to ~/Library/LaunchAgents and will restart
-automatically if it crashes.`,
+automatically if it crashes.
+
+When called without flags on an existing installation, reinstalls using
+the current settings.`,
 	RunE: runInstall,
 }
 
@@ -96,17 +99,9 @@ var uninstallCmd = &cobra.Command{
 	RunE:  runUninstall,
 }
 
-var updateCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Reinstall monitor watcher service with current binary (macOS)",
-	Long:  `Reinstall the LaunchAgent using settings from the existing installation.`,
-	RunE:  runUpdate,
-}
-
 func init() {
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(uninstallCmd)
-	rootCmd.AddCommand(updateCmd)
 
 	installCmd.Flags().String("name", "", "Unique watcher name (defaults to hostname)")
 	installCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
@@ -119,6 +114,16 @@ func init() {
 func runInstall(cmd *cobra.Command, args []string) error {
 	if runtime.GOOS != "darwin" {
 		return fmt.Errorf("install command is only supported on macOS")
+	}
+
+	// With no explicit flags, reinstall using the existing plist's settings
+	if cmd.Flags().NFlag() == 0 {
+		homeDir, err := os.UserHomeDir()
+		if err == nil {
+			if cfg, err := readInstalledConfig(homeDir); err == nil {
+				return installService(cfg)
+			}
+		}
 	}
 
 	name, _ := cmd.Flags().GetString("name")
@@ -154,24 +159,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		AuthToken:   authToken,
 		Probes:      probes,
 	})
-}
-
-func runUpdate(cmd *cobra.Command, args []string) error {
-	if runtime.GOOS != "darwin" {
-		return fmt.Errorf("update command is only supported on macOS")
-	}
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
-	}
-
-	cfg, err := readInstalledConfig(homeDir)
-	if err != nil {
-		return err
-	}
-
-	return installService(cfg)
 }
 
 func installService(cfg *installConfig) error {
