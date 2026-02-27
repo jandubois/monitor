@@ -13,7 +13,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const launchAgentLabel = "io.github.jandubois.monitor"
+const launchAgentLabel = "com.jandubois.monitor"
+const legacyLaunchAgentLabel = "io.github.jandubois.monitor"
 
 var launchAgentPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -153,11 +154,9 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create log directory: %w", err)
 	}
 
-	// Check if already installed
-	if _, err := os.Stat(plistPath); err == nil {
-		// Unload existing service first (ignore error - best effort cleanup)
-		_ = exec.Command("launchctl", "unload", plistPath).Run()
-	}
+	// Remove legacy and current plists before reinstalling
+	removeLaunchAgent(homeDir, legacyLaunchAgentLabel)
+	removeLaunchAgent(homeDir, launchAgentLabel)
 
 	// Generate plist
 	data := plistData{
@@ -208,25 +207,28 @@ func runUninstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	plistPath := filepath.Join(homeDir, "Library", "LaunchAgents", launchAgentLabel+".plist")
+	removedLegacy := removeLaunchAgent(homeDir, legacyLaunchAgentLabel)
+	removedCurrent := removeLaunchAgent(homeDir, launchAgentLabel)
 
-	// Check if installed
-	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
+	if !removedLegacy && !removedCurrent {
 		return fmt.Errorf("service is not installed")
 	}
-
-	// Unload the service
-	if err := exec.Command("launchctl", "unload", plistPath).Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: failed to unload service: %v\n", err)
-	}
-
-	// Remove the plist
-	if err := os.Remove(plistPath); err != nil {
-		return fmt.Errorf("failed to remove plist: %w", err)
-	}
-
-	fmt.Printf("Uninstalled %s\n", launchAgentLabel)
 	return nil
+}
+
+// removeLaunchAgent unloads and deletes a launch agent plist. Returns true if the plist existed.
+func removeLaunchAgent(homeDir, label string) bool {
+	plistPath := filepath.Join(homeDir, "Library", "LaunchAgents", label+".plist")
+	if _, err := os.Stat(plistPath); os.IsNotExist(err) {
+		return false
+	}
+	_ = exec.Command("launchctl", "unload", plistPath).Run()
+	if err := os.Remove(plistPath); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: failed to remove %s: %v\n", plistPath, err)
+		return false
+	}
+	fmt.Printf("Uninstalled %s\n", label)
+	return true
 }
 
 // getFullHostname returns the FQDN by doing a reverse DNS lookup on our IP.
