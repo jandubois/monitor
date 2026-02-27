@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -66,6 +68,16 @@ type plistData struct {
 	Probes      []string
 }
 
+// installConfig holds the user-specified settings for a LaunchAgent installation.
+type installConfig struct {
+	Name        string
+	PushURL     string
+	CallbackURL string
+	APIPort     int
+	AuthToken   string
+	Probes      []string
+}
+
 var installCmd = &cobra.Command{
 	Use:   "install",
 	Short: "Install monitor watcher as a launchd service (macOS)",
@@ -84,9 +96,17 @@ var uninstallCmd = &cobra.Command{
 	RunE:  runUninstall,
 }
 
+var updateCmd = &cobra.Command{
+	Use:   "update",
+	Short: "Reinstall monitor watcher service with current binary (macOS)",
+	Long:  `Reinstall the LaunchAgent using settings from the existing installation.`,
+	RunE:  runUpdate,
+}
+
 func init() {
 	rootCmd.AddCommand(installCmd)
 	rootCmd.AddCommand(uninstallCmd)
+	rootCmd.AddCommand(updateCmd)
 
 	installCmd.Flags().String("name", "", "Unique watcher name (defaults to hostname)")
 	installCmd.Flags().String("push-url", "http://localhost:8080", "URL of the web service")
@@ -126,7 +146,35 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("auth token required (use --auth-token or AUTH_TOKEN env var)")
 	}
 
-	// Get the path to the current executable
+	return installService(&installConfig{
+		Name:        name,
+		PushURL:     pushURL,
+		CallbackURL: callbackURL,
+		APIPort:     apiPort,
+		AuthToken:   authToken,
+		Probes:      probes,
+	})
+}
+
+func runUpdate(cmd *cobra.Command, args []string) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("update command is only supported on macOS")
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	cfg, err := readInstalledConfig(homeDir)
+	if err != nil {
+		return err
+	}
+
+	return installService(cfg)
+}
+
+func installService(cfg *installConfig) error {
 	executable, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
@@ -136,7 +184,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to resolve executable path: %w", err)
 	}
 
-	// Set up paths
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return fmt.Errorf("failed to get home directory: %w", err)
@@ -146,7 +193,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	logDir := filepath.Join(homeDir, "Library", "Logs", "monitor")
 	plistPath := filepath.Join(launchAgentsDir, launchAgentLabel+".plist")
 
-	// Create directories if needed
 	if err := os.MkdirAll(launchAgentsDir, 0755); err != nil {
 		return fmt.Errorf("failed to create LaunchAgents directory: %w", err)
 	}
@@ -158,17 +204,16 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	removeLaunchAgent(homeDir, legacyLaunchAgentLabel)
 	removeLaunchAgent(homeDir, launchAgentLabel)
 
-	// Generate plist
 	data := plistData{
 		Label:       launchAgentLabel,
 		Executable:  executable,
-		Name:        name,
-		PushURL:     pushURL,
-		CallbackURL: callbackURL,
-		APIPort:     apiPort,
-		AuthToken:   authToken,
+		Name:        cfg.Name,
+		PushURL:     cfg.PushURL,
+		CallbackURL: cfg.CallbackURL,
+		APIPort:     cfg.APIPort,
+		AuthToken:   cfg.AuthToken,
 		LogDir:      logDir,
-		Probes:      probes,
+		Probes:      cfg.Probes,
 	}
 
 	tmpl, err := template.New("plist").Parse(launchAgentPlist)
@@ -186,7 +231,6 @@ func runInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to write plist: %w", err)
 	}
 
-	// Load the service
 	if err := exec.Command("launchctl", "load", plistPath).Run(); err != nil {
 		return fmt.Errorf("failed to load service: %w", err)
 	}
@@ -195,6 +239,67 @@ func runInstall(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Logs: %s/monitor.log\n", logDir)
 	fmt.Printf("Plist: %s\n", plistPath)
 	return nil
+}
+
+// readInstalledConfig extracts settings from an existing LaunchAgent plist.
+func readInstalledConfig(homeDir string) (*installConfig, error) {
+	agentsDir := filepath.Join(homeDir, "Library", "LaunchAgents")
+
+	// Try current label first, then legacy
+	var plistPath string
+	for _, label := range []string{launchAgentLabel, legacyLaunchAgentLabel} {
+		p := filepath.Join(agentsDir, label+".plist")
+		if _, err := os.Stat(p); err == nil {
+			plistPath = p
+			break
+		}
+	}
+	if plistPath == "" {
+		return nil, fmt.Errorf("service is not installed")
+	}
+
+	out, err := exec.Command("plutil", "-convert", "json", "-o", "-", plistPath).Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read plist %s: %w", plistPath, err)
+	}
+
+	var contents struct {
+		ProgramArguments     []string          `json:"ProgramArguments"`
+		EnvironmentVariables map[string]string `json:"EnvironmentVariables"`
+	}
+	if err := json.Unmarshal(out, &contents); err != nil {
+		return nil, fmt.Errorf("failed to parse plist %s: %w", plistPath, err)
+	}
+
+	cfg := &installConfig{
+		AuthToken: contents.EnvironmentVariables["AUTH_TOKEN"],
+	}
+
+	// Parse flag pairs from ProgramArguments (skip executable and "watcher")
+	progArgs := contents.ProgramArguments
+	for i := 2; i < len(progArgs)-1; i += 2 {
+		switch progArgs[i] {
+		case "--name":
+			cfg.Name = progArgs[i+1]
+		case "--push-url":
+			cfg.PushURL = progArgs[i+1]
+		case "--callback-url":
+			cfg.CallbackURL = progArgs[i+1]
+		case "--api-port":
+			cfg.APIPort, err = strconv.Atoi(progArgs[i+1])
+			if err != nil {
+				return nil, fmt.Errorf("invalid api-port in plist: %w", err)
+			}
+		case "--probe":
+			cfg.Probes = append(cfg.Probes, progArgs[i+1])
+		}
+	}
+
+	if cfg.AuthToken == "" {
+		return nil, fmt.Errorf("no AUTH_TOKEN found in existing plist")
+	}
+
+	return cfg, nil
 }
 
 func runUninstall(cmd *cobra.Command, args []string) error {
