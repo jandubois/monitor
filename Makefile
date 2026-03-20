@@ -21,9 +21,9 @@ build-probes:
 # Lint everything
 lint: lint-go lint-frontend
 
-# Lint Go code
+# Lint Go code (version pinned in tools/go.mod)
 lint-go:
-	go tool golangci-lint run ./...
+	go tool -modfile=./tools/go.mod golangci-lint run ./...
 
 # Lint frontend code
 lint-frontend:
