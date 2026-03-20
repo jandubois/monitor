@@ -16,21 +16,16 @@ jobs:
 
       - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
 
       - name: Lint
-        uses: golangci/golangci-lint-action@1e7e51e771db61008b38414a730f564565cf7c20 # v9
-        with:
-          version: latest
+        run: make lint-go
 
       - name: Test
         run: go test ./...
 
   frontend:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web/frontend
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -39,10 +34,12 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
+        working-directory: web/frontend
         run: npm ci
 
       - name: Lint
-        run: npm run lint
+        run: make lint-frontend
 
       - name: Test
+        working-directory: web/frontend
         run: npm run test:run

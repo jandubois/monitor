@@ -1,4 +1,4 @@
-.PHONY: build build-frontend build-go build-probes run-watcher run-web migrate clean
+.PHONY: build build-frontend build-go build-probes lint lint-go lint-frontend run-watcher run-web migrate clean
 
 # Build everything
 build: build-frontend build-go build-probes
@@ -17,6 +17,17 @@ build-go:
 build-probes:
 	go build -o probes/disk-space/disk-space ./probes/disk-space
 	go build -o probes/command/command ./probes/command
+
+# Lint everything
+lint: lint-go lint-frontend
+
+# Lint Go code
+lint-go:
+	go tool golangci-lint run ./...
+
+# Lint frontend code
+lint-frontend:
+	cd web/frontend && npm run lint
 
 # Run watcher locally (requires DATABASE_URL)
 run-watcher:

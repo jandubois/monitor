@@ -309,7 +309,7 @@ func formatCommitMessage(repo string, commit *Commit, commitURL string) string {
 	title, body := parseCommitMessage(commit.Commit.Message)
 
 	// Commit link and title
-	sb.WriteString(fmt.Sprintf("[%s](%s) **%s**\n\n", commit.SHA[:7], commitURL, title))
+	fmt.Fprintf(&sb, "[%s](%s) **%s**\n\n", commit.SHA[:7], commitURL, title)
 
 	// Commit body if present
 	if body != "" {
@@ -318,8 +318,8 @@ func formatCommitMessage(repo string, commit *Commit, commitURL string) string {
 	}
 
 	// Stats line
-	sb.WriteString(fmt.Sprintf("**+%d** / **-%d** in %d files",
-		commit.Stats.Additions, commit.Stats.Deletions, len(commit.Files)))
+	fmt.Fprintf(&sb, "**+%d** / **-%d** in %d files",
+		commit.Stats.Additions, commit.Stats.Deletions, len(commit.Files))
 
 	return sb.String()
 }
