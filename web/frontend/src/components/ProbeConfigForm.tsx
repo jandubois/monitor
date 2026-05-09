@@ -64,10 +64,11 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
     return Array.from(kw).sort();
   }, [probeConfigs]);
 
-  const [probeTypeId, setProbeTypeId] = useState<number>(editingConfig?.probe_type_id ?? initialProbeTypeId ?? 0);
-  const [name, setName] = useState(editingConfig?.name ?? '');
-  const [nameManuallyEdited, setNameManuallyEdited] = useState(!!editingConfig);
-  const [watcherId, setWatcherId] = useState<number | undefined>(editingConfig?.watcher_id);
+  const [selectedProbeTypeId, setSelectedProbeTypeId] = useState<number | null>(
+    editingConfig?.probe_type_id ?? initialProbeTypeId ?? null
+  );
+  const [manualName, setManualName] = useState<string | null>(editingConfig?.name ?? null);
+  const [selectedWatcherId, setSelectedWatcherId] = useState<number | undefined>(editingConfig?.watcher_id);
   const [enabled, setEnabled] = useState(editingConfig?.enabled ?? true);
   const [interval, setInterval] = useState(editingConfig?.interval ?? '5m');
   const [timeout, setTimeout] = useState(editingConfig?.timeout_seconds ?? 60);
@@ -94,6 +95,7 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
   const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const typeDropdownRef = useRef<HTMLDivElement>(null);
 
+  const probeTypeId = selectedProbeTypeId ?? allProbeTypes[0]?.id ?? 0;
   const selectedType = allProbeTypes.find((pt) => pt.id === probeTypeId);
   // When previewing, show the previewed type's info; otherwise show selected
   const displayedType = previewedTypeId
@@ -126,29 +128,23 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
     return watchers.filter(w => selectedType.watcher_ids!.includes(w.id));
   }, [watchers, selectedType]);
 
-  // Set initial probe type when data loads
-  useEffect(() => {
-    if (!editingConfig && allProbeTypes.length > 0 && probeTypeId === 0) {
-      const initial = initialProbeTypeId && allProbeTypes.find(pt => pt.id === initialProbeTypeId);
-      setProbeTypeId(initial ? initial.id : allProbeTypes[0].id);
-    }
-  }, [editingConfig, allProbeTypes, probeTypeId, initialProbeTypeId]);
+  const watcherId = editingConfig
+    ? selectedWatcherId
+    : (selectedWatcherId !== undefined && availableWatchers.some(w => w.id === selectedWatcherId))
+      ? selectedWatcherId
+      : availableWatchers[0]?.id;
 
-  // When probe type changes, reset watcher to first available
-  useEffect(() => {
-    if (!editingConfig && availableWatchers.length > 0) {
-      if (!watcherId || !availableWatchers.find(w => w.id === watcherId)) {
-        setWatcherId(availableWatchers[0].id);
-      }
-    }
-  }, [editingConfig, availableWatchers, watcherId]);
-
-  // When probe type changes (for new probes), use the default_interval if available
-  useEffect(() => {
-    if (!editingConfig && selectedType?.default_interval) {
+  // Reset interval to the new probe type's default when the user picks a
+  // different type. Uses the "adjust state during render" pattern so React
+  // can collapse the extra render rather than queue a cascading update.
+  // https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [intervalProbeTypeId, setIntervalProbeTypeId] = useState(probeTypeId);
+  if (!editingConfig && intervalProbeTypeId !== probeTypeId) {
+    setIntervalProbeTypeId(probeTypeId);
+    if (selectedType?.default_interval) {
       setInterval(selectedType.default_interval);
     }
-  }, [editingConfig, selectedType]);
+  }
 
   // Close type dropdown when clicking outside
   useEffect(() => {
@@ -180,7 +176,7 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
 
   // Commit to the previewed type: make it the actual selection
   const commitPreview = useCallback((typeId: number) => {
-    setProbeTypeId(typeId);
+    setSelectedProbeTypeId(typeId);
     setArgs({}); // Clear args for new type
     setPreviewedTypeId(null);
     setSavedArgs(null);
@@ -245,14 +241,9 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
     return expandTemplate(selectedType.default_name, args, selectedWatcher, selectedType);
   }, [selectedType, args, selectedWatcher]);
 
-  // Auto-populate name when template inputs change (unless manually edited)
-  useEffect(() => {
-    if (nameManuallyEdited) return;
-    const defaultName = generateDefaultName();
-    if (defaultName) {
-      setName(defaultName);
-    }
-  }, [nameManuallyEdited, generateDefaultName]);
+  // Empty manualName falls back to the template default so that clearing the
+  // input re-enables auto-population from probe type, args, and watcher.
+  const name = (manualName !== null && manualName !== '') ? manualName : generateDefaultName();
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -357,11 +348,7 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
               <input
                 type="text"
                 value={name}
-                onChange={(e) => {
-                  const newValue = e.target.value;
-                  setName(newValue);
-                  setNameManuallyEdited(newValue !== '');
-                }}
+                onChange={(e) => setManualName(e.target.value)}
                 required
                 className="flex-1 px-3 py-1.5 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Probe name"
@@ -474,7 +461,7 @@ export function ProbeConfigForm({ watchers, editingConfig, initialProbeTypeId, k
                       ) : (
                         <select
                           value={watcherId}
-                          onChange={(e) => setWatcherId(Number(e.target.value))}
+                          onChange={(e) => setSelectedWatcherId(Number(e.target.value))}
                           className="w-full px-3 py-2 border rounded focus:ring-2 focus:ring-blue-500"
                           disabled={availableWatchers.length === 0}
                         >
