@@ -5,7 +5,7 @@ go 1.25.0
 require (
 	github.com/docker/go-units v0.5.0
 	github.com/spf13/cobra v1.10.2
-	modernc.org/sqlite v1.50.1
+	modernc.org/sqlite v1.51.0
 )
 
 require (
