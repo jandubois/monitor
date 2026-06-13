@@ -18,7 +18,7 @@ ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X github.com/jandubois/monitor/cmd.Version=${VERSION} -B gobuildid" -o monitor .
 
 # Final image
-FROM alpine:3.23
+FROM alpine:3.24
 RUN apk add --no-cache ca-certificates tzdata git bash curl jq sqlite
 WORKDIR /app
 COPY --from=go-builder /app/monitor .
