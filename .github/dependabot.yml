@@ -21,6 +21,13 @@ updates:
       patterns:
       - react
       - react-dom
+  ignore:
+  # typescript-eslint peers typescript <6.1.0 and crashes on the 7.x
+  # native port. Drop this once it supports TypeScript 7.
+  - dependency-name: typescript
+    update-types:
+    - version-update:semver-major
+    - version-update:semver-minor
 - package-ecosystem: docker
   directory: /
   schedule:
