@@ -7,7 +7,7 @@ COPY web/frontend/ ./
 RUN npm run build
 
 # Build Go binary (watcher with built-in probes)
-FROM golang:1.26-alpine AS builder
+FROM golang:1.27-alpine AS builder
 RUN apk add --no-cache git
 WORKDIR /app
 COPY go.mod go.sum ./
